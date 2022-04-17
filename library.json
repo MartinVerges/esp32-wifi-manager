@@ -1,0 +1,27 @@
+{
+  "name": "ESP32 Wifi Manager",
+  "version": "1.0.0",
+  "description": "A multi wifi manager for arduino based ESP applications, with RESTful API input wifi credentials, saving them on non volatile memory.",
+  "keywords": "esp32, wifi, ap, softap, sta, restful, api, manager, arduino",
+  "repository":
+  {
+    "type": "git",
+    "url": "https://github.com/MartinVerges/esp32-wifi-manager"
+  },
+  "authors":
+  [
+    {
+      "name": "Martin Verges",
+      "email": "martin@verges.cc",
+      "maintainer": true
+    }
+  ],
+  "license": "CC-BY-NC-SA-4.0",
+  "dependencies": {
+    "me-no-dev/AsyncTCP": "^1.1.1",
+    "me-no-dev/ESP Async WebServer": "^1.2.3",
+    "bblanchon/ArduinoJson": "^6.19.2"
+  },
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}

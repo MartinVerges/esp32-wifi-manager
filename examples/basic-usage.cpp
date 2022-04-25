@@ -6,19 +6,20 @@
  * (Attribution-NonCommercial-ShareAlike 4.0 International)
 **/
 
-#include <arduino.h>
-#include "wifi-manager.h"
+#include <Arduino.h>
+#include "wifimanager.h"
+
+// Create a instance of the WifiManager
+WIFIMANAGER WifiManager;
 
 void setup() {
   Serial.begin(9600);
 
-  // Create a instance of the WifiManager
-  WIFIMANAGER WifiManager;
   // Load well known Wifi AP credentials from NVS
   WifiManager.startBackgroundTask();
 
   // We do need the Webserver to attach our RESTful API
-  AsyncWebServer webServer(webserverPort);
+  AsyncWebServer webServer(80);
   // Attach our API to the Webserver
   WifiManager.attachWebServer(&webServer);
   // Run the Webserver

@@ -12,6 +12,10 @@
 #include <WiFi.h>
 #include <Preferences.h>
 
+/**
+ * @brief Background Task running as a loop forever
+ * @param param needs to be a valid WIFIMANAGER instance
+ */
 void wifiTask(void* param) {
   yield();
   delay(500); // wait a short time until everything is setup before executing the loop forever
@@ -28,6 +32,9 @@ void wifiTask(void* param) {
   }
 }
 
+/**
+ * @brief Load config from NVS, start to connect to WIFI and initiate a background task to keep it up
+ */
 void WIFIMANAGER::startBackgroundTask() {
   loadFromNVS();
   tryConnect();
@@ -42,6 +49,11 @@ void WIFIMANAGER::startBackgroundTask() {
   );
 }
 
+/**
+ * @brief Construct a new WIFIMANAGER::WIFIMANAGER object
+ * @details Puts the Wifi mode to AP+STA and registers Wifi Events
+ * @param ns Namespace for the preferences non volatile storage (NVS)
+ */
 WIFIMANAGER::WIFIMANAGER(const char * ns) {
   NVS = (char *)ns;
   WiFi.mode(WIFI_AP_STA);
@@ -66,19 +78,37 @@ WIFIMANAGER::WIFIMANAGER(const char * ns) {
   }, SYSTEM_EVENT_AP_STADISCONNECTED);
 }
 
+/**
+ * @brief Destroy the WIFIMANAGER::WIFIMANAGER object
+ * @details will stop the background task as well but not cleanup the AsyncWebserver
+ */
 WIFIMANAGER::~WIFIMANAGER() {
   vTaskDelete(WifiCheckTask);
   // FIXME: get rid of the registered Webserver AsyncCallbackWebHandlers
 }
 
+/**
+ * @brief If no WIFI is available, fallback to create an AP on the ESP32
+ * @param state boolean true (create AP) or false (don't create an AP)
+ */
 void WIFIMANAGER::fallbackToSoftAp(bool state) {
   createFallbackAP = state;
 }
 
+/**
+ * @brief Get the current configured fallback state
+ * @return true
+ * @return false
+ */
 bool WIFIMANAGER::getFallbackState() {
   return createFallbackAP;
 }
 
+/**
+ * @brief Remove all entries from the current known and configured Wifi list
+ * @details This only affects memory, not the storage!
+ * @details If you wan't to persist this, you need to call writeToNVS()
+ */
 void WIFIMANAGER::clearApList() {
   for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
     apList[i].apName = "";
@@ -86,6 +116,11 @@ void WIFIMANAGER::clearApList() {
   }
 }
 
+/**
+ * @brief Load last saved configuration from the NVS into the memory
+ * @return true on success
+ * @return false on error
+ */
 bool WIFIMANAGER::loadFromNVS() {
   configuredSSIDs = 0;
   if (preferences.begin(NVS, true)) {
@@ -97,7 +132,7 @@ bool WIFIMANAGER::loadFromNVS() {
       if (apName.length() > 0) {
         sprintf(tmpKey, "apPass%d", i);
         String apPass = preferences.getString(tmpKey);
-        Serial.printf("[WIFI] Load SSID '%s' to %d. slot.\n", apName.c_str(), i);
+        Serial.printf("[WIFI] Load SSID '%s' to %d. slot.\n", apName.c_str(), i+1);
         apList[i].apName = apName;
         apList[i].apPass = apPass;
         configuredSSIDs++;
@@ -110,6 +145,11 @@ bool WIFIMANAGER::loadFromNVS() {
   return false;
 }
 
+/**
+ * @brief Write the current in memory configuration to the non volatile storage
+ * @return true on success
+ * @return false on error with the NVS
+ */
 bool WIFIMANAGER::writeToNVS() {
   if (preferences.begin(NVS, false)) {
     preferences.clear();
@@ -128,6 +168,14 @@ bool WIFIMANAGER::writeToNVS() {
   return false;
 }
 
+/**
+ * @brief Add a new WIFI SSID to the known credentials list
+ * @param apName Name of the SSID to connect to
+ * @param apPass Password (or empty) to connect to the SSID
+ * @param updateNVS Write the new entry directly to NVS
+ * @return true on success
+ * @return false on failure
+ */
 bool WIFIMANAGER::addWifi(String apName, String apPass, bool updateNVS) {
   if(apName.length() < 1 || apName.length() > 31) {
       Serial.println(F("[WIFI] No SSID given or ssid too long"));
@@ -152,6 +200,12 @@ bool WIFIMANAGER::addWifi(String apName, String apPass, bool updateNVS) {
   return false; // max entries reached
 }
 
+/**
+ * @brief Drop a known SSID entry ID from the known list and write change to NVS
+ * @param apId ID of the SSID within the array
+ * @return true on success
+ * @return false on error
+ */
 bool WIFIMANAGER::delWifi(uint8_t apId) {
   if (apId < WIFIMANAGER_MAX_APS) {
     apList[apId].apName.clear();
@@ -161,6 +215,12 @@ bool WIFIMANAGER::delWifi(uint8_t apId) {
   return false;
 }
 
+/**
+ * @brief Drop a known SSID name from the known list and write change to NVS
+ * @param apName SSID name
+ * @return true on success
+ * @return false on error
+ */
 bool WIFIMANAGER::delWifi(String apName) {
   int num = 0;
   for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
@@ -171,11 +231,22 @@ bool WIFIMANAGER::delWifi(String apName) {
   return num > 0;
 }
 
+/**
+ * @brief Provides information about the current configuration state
+ * @details When at least 1 SSID is configured, the return value will be true, otherwise false
+ * @return true if one or more SSIDs stored
+ * @return false if no configuration is available
+ */
 bool WIFIMANAGER::configAvailable() {
     return configuredSSIDs > 0;
 }
 
-// only call this function when you have configuredSSIDs > 0, otherwise it will fail!
+/**
+ * @brief Provides the apList element id of the first configured slot
+ * @details It's used to speed up connection by getting the first available configuration
+ * @note only call this function when you have configuredSSIDs > 0, otherwise it will return 0 as well and fail!
+ * @return uint8_t apList element id
+ */
 uint8_t WIFIMANAGER::getApEntry() {
   for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
     if (apList[i].apName.length()) return i;
@@ -185,6 +256,10 @@ uint8_t WIFIMANAGER::getApEntry() {
   return 0;
 }
 
+/**
+ * @brief Background loop function running inside the task
+ * @details regulary check if the connection is up&running, try to reconnect or create a fallback AP
+ */
 void WIFIMANAGER::loop() {
   if (millis() - lastWifiCheck < intervalWifiCheck) return;
   lastWifiCheck = millis();
@@ -222,6 +297,12 @@ void WIFIMANAGER::loop() {
   }
 }
 
+/**
+ * @brief Try to connect to one of the configured SSIDs (if available).
+ * @details If more than 2 SSIDs configured, scan for available WIFIs and connect to the strongest
+ * @return true on success
+ * @return false on error or no configuration
+ */
 bool WIFIMANAGER::tryConnect() {
   if (!configAvailable()) {
     Serial.println(F("[WIFI] No SSIDs configured in NVS, unable to connect."));
@@ -304,6 +385,12 @@ bool WIFIMANAGER::tryConnect() {
   return false;
 }
 
+/**
+ * @brief Start a SoftAP for direct client access
+ * @param apName name of the AP to create (default is ESP_XXXXXXXX)
+ * @return true on success
+ * @return false o error or if a SoftAP already runs
+ */
 bool WIFIMANAGER::runSoftAP(String apName) {
   if (softApRunning) return true;
   startApTime = millis();
@@ -323,20 +410,34 @@ bool WIFIMANAGER::runSoftAP(String apName) {
   }
 }
 
+/**
+ * @brief Stop/Disconnect a current running SoftAP
+ */
 void WIFIMANAGER::stopSoftAp() {
   WiFi.softAPdisconnect();
 }
 
+/**
+ * @brief Stop/Disconnect a current wifi connection
+ */
 void WIFIMANAGER::stopClient() {
   WiFi.disconnect();
 }
 
+/**
+ * @brief Stop/Disconnect all running wifi activies and optionally kill the background task as well
+ * @param killTask true to kill the background task to prevent reconnects
+ */
 void WIFIMANAGER::stopWifi(bool killTask) {
   if (killTask) vTaskDelete(WifiCheckTask);
   stopSoftAp();
   stopClient();
 }
 
+/**
+ * @brief Attach the ESP_AsyncWebServer to the WifiManager to register the RESTful API
+ * @param srv AsyncWebServer object
+ */
 void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
   webServer = srv; // store it in the class for later use
 

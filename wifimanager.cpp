@@ -58,7 +58,7 @@ WIFIMANAGER::WIFIMANAGER(const char * ns) {
   NVS = (char *)ns;
   WiFi.mode(WIFI_AP_STA);
   WiFi.disconnect();
-  WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
+//  WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
 
   // AP on/off
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
@@ -192,6 +192,7 @@ bool WIFIMANAGER::addWifi(String apName, String apPass, bool updateNVS) {
       Serial.printf("[WIFI] Found unused slot Nr. %d to store the new SSID '%s' credentials.\n", i, apName.c_str());
       apList[i].apName = apName;
       apList[i].apPass = apPass;
+      configuredSSIDs++;
       if (updateNVS) return writeToNVS();
       else return true;
     }
@@ -279,16 +280,20 @@ void WIFIMANAGER::loop() {
     Serial.print(F("[WIFI] We are connected to an unknown SSID ignoring. Connected to: "));
     Serial.println(WiFi.SSID());
   } else {
-    // let's try to connect to some WiFi in Range
-    if (!tryConnect()) {
-      if (createFallbackAP) runSoftAP();
-      else Serial.println(F("[WIFI] Auto creation of SoftAP is disabled, no starting AP!"));
+    if (softApRunning && WiFi.softAPgetStationNum() > 0) {
+      Serial.printf("[WIFI] Not trying to connect, as SoftAP has %d clients connected!\n", WiFi.softAPgetStationNum());
+    } else {
+      // let's try to connect to some WiFi in Range
+      if (!tryConnect()) {
+        if (createFallbackAP) runSoftAP();
+        else Serial.println(F("[WIFI] Auto creation of SoftAP is disabled, no starting AP!"));
+      }
     }
   }
   
-  if (millis() - startApTime > timeoutApMillis) {
+  if (softApRunning && millis() - startApTime > timeoutApMillis) {
     if (WiFi.softAPgetStationNum() > 0) {
-      Serial.println(F("[WIFI] Running in AP mode with client connected"));
+      Serial.printf("[WIFI] SoftAP has %d clients connected!\n", WiFi.softAPgetStationNum());
       startApTime = millis(); // reset timeout as someone is connected
       return;
     }
@@ -307,6 +312,11 @@ bool WIFIMANAGER::tryConnect() {
   if (!configAvailable()) {
     Serial.println(F("[WIFI] No SSIDs configured in NVS, unable to connect."));
     if (createFallbackAP) runSoftAP();
+    return false;
+  }
+
+  if (softApRunning && WiFi.softAPgetStationNum() > 0) {
+    Serial.printf("[WIFI] Not trying to connect, as SoftAP has %d clients connected!\n", WiFi.softAPgetStationNum());
     return false;
   }
 

@@ -467,6 +467,33 @@ void WIFIMANAGER::stopWifi(bool killTask) {
 void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
   webServer = srv; // store it in the class for later use
 
+  webServer->on((apiPrefix + "/softap/start").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
+    [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
+
+    request->send(200, "application/json", "{\"message\":\"Soft AP stopped\"}");
+    yield();
+    delay(250);
+    runSoftAP();
+  });
+  
+  webServer->on((apiPrefix + "/softap/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
+    [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
+
+    request->send(200, "application/json", "{\"message\":\"Soft AP stopped\"}");
+    yield();
+    delay(250); // It's likely that this message won't go trough, but we give it a short time
+    stopSoftAp();
+  });
+    
+  webServer->on((apiPrefix + "/client/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
+    [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
+
+    request->send(200, "application/json", "{\"message\":\"Terminating current Wifi connection\"}");
+    yield();
+    delay(250); // It's likely that this message won't go trough, but we give it a short time
+    stopClient();
+  });
+  
   webServer->on((apiPrefix + "/add").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
 

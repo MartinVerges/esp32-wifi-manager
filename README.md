@@ -1,7 +1,9 @@
 # ESP32 Wifi Manager 
 
-This wifi manager runs your ESP32 in a AP+STA mode.
+This multi wifi manager runs your ESP32 in a AP+STA mode.
 This way you can easily start a softAP and scan for Wifi Networks while beeing conntected to some wifi.
+
+You can store multiple SSIDs and it will try to connect, reconnect and optionally fallback to softAP.
 
 ## Why?
 
@@ -9,7 +11,7 @@ Because all the available solution that I found, where unable to fullfill my req
 
 ## Focus of this Project
 
-It is only made and tested on ESP32 Microcontrollers.
+It is only made and tested it on my ESP32 Microcontroller.
 
 ## How is it working?
 
@@ -29,7 +31,6 @@ It is only made and tested on ESP32 Microcontrollers.
 
 <img src="documentation/flow-diagram.png?raw=true" alt="Flow diagram" width="40%">
 
-
 ## What do I need to do?
 
 If you want to use this wifi manager, you have to create your own Web UI for it!
@@ -37,14 +38,17 @@ It won't give you a premade styled UI to configure the SSID credentials.
 
 ## APIs
 
-| Method | Request URL          | Json Body                                    | Info                                                      |
-| ------ | -------------------- | -------------------------------------------- | --------------------------------------------------------- |
-| GET    | /api/wifi/configlist | none                                         | Get the configured SSID AP list                           |
-| GET    | /api/wifi/scan       | none                                         | Scan for Networks in Range                                |
-| GET    | /api/wifi/status     | none                                         | Show Status of the ESP32                                  |
-| POST   | /api/wifi/add        | `{ "apName": "mySSID", "apPass": "secret" }` | Add a new SSID to the AP list                             |
-| DELETE | /api/wifi/id         | `{ "id": 1 }`                                | Drop the AP list entry using the ID                       |
-| DELETE | /api/wifi/apName     | `{ "apName": "mySSID" }`                     | Drop the AP list entries identified by the AP (SSID) Name |
+| Method | Request URL             | Json Body                                    | Info                                                            |
+| ------ | ----------------------- | -------------------------------------------- | --------------------------------------------------------------- |
+| GET    | /api/wifi/configlist    | none                                         | Get the configured SSID AP list                                 |
+| GET    | /api/wifi/scan          | none                                         | Scan for Networks in Range                                      |
+| GET    | /api/wifi/status        | none                                         | Show Status of the ESP32                                        |
+| POST   | /api/wifi/add           | `{ "apName": "mySSID", "apPass": "secret" }` | Add a new SSID to the AP list                                   |
+| DELETE | /api/wifi/id            | `{ "id": 1 }`                                | Drop the AP list entry using the ID                             |
+| DELETE | /api/wifi/apName        | `{ "apName": "mySSID" }`                     | Drop the AP list entries identified by the AP (SSID) Name       |
+| POST   | /api/wifi/softAp/start  | none                                         | Open/Create a softAP. Used to switch from client to AP mode     |
+| POST   | /api/wifi/softAp/stop   | none                                         | Disconnect the softAP and start to connect to known SSIDs       |
+| POST   | /api/wifi/client/stop   | none                                         | Disconnect current wifi connection, start to search and connect |
 
 ## Dependencies
 
@@ -67,5 +71,4 @@ If not, see <http://creativecommons.org/licenses/by-nc-sa/4.0/>.
 
 ## Commercial Licenses 
 
-If you want to use this software on a comercial product, you can get an available commercial license on request.
-
+If you want to use this software on a comercial product, you can get an commercial license on request.

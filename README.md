@@ -25,6 +25,11 @@ It is only made and tested on ESP32 Microcontrollers.
 
 4) The background task monitors the Wifi status and reconnect if required.
 
+### More detailed flow diagram
+
+<img src="documentation/flow-diagram.png?raw=true" alt="Flow diagram" width="40%">
+
+
 ## What do I need to do?
 
 If you want to use this wifi manager, you have to create your own Web UI for it!

@@ -9,19 +9,31 @@
 #define WIFIMANAGER_h
 
 #ifndef WIFIMANAGER_MAX_APS 
-// Valid range is uint8_t
-#define WIFIMANAGER_MAX_APS 4
+#define WIFIMANAGER_MAX_APS 4   // Valid range is uint8_t
+#endif
+
+#ifndef ASYNC_WEBSERVER
+  #define ASYNC_WEBSERVER true
 #endif
 
 #include <Arduino.h>
 #include <Preferences.h>
-#include <ESPAsyncWebServer.h>
+#if ASYNC_WEBSERVER == true
+  #include <ESPAsyncWebServer.h>
+#else
+  #include <WebServer.h>
+#endif
+
 
 void wifiTask(void* param);
 
 class WIFIMANAGER {
   private:
+#if ASYNC_WEBSERVER == true
     AsyncWebServer * webServer;         // The Webserver to register routes on
+#else
+    WebServer * webServer;              // The Webserver to register routes on
+#endif
     String apiPrefix = "/api/wifi";     // Prefix for all IP endpionts
 
     Preferences preferences;            // Used to store AP credentials to NVS
@@ -66,7 +78,11 @@ class WIFIMANAGER {
     void startBackgroundTask();
 
     // Attach a webserver and register api routes
+#if ASYNC_WEBSERVER == true
     void attachWebServer(AsyncWebServer * srv);
+#else
+    void attachWebServer(WebServer * srv);
+#endif
 
     // Add another AP to the list of known WIFIs
     bool addWifi(String apName, String apPass, bool updateNVS = true);

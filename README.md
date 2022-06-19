@@ -57,14 +57,22 @@ These are:
 
 * Arduino 
 * Preferences
-* ESPAsyncWebServer
 * ArduinoJson
+
+Optional:
+
+* ESPAsyncWebServer - use compiler flag `-DASYNC_WEBSERVER=true` (default)
+
+## ESPAsyncWebserver vs Arduino Standard Webserver
+
+After it is not possible to use the `ESPAsyncWebserver.h` dependency in some projects, the simpler standard Arduino `WebServer.h` can be used. 
+To switch to the legacy Webserver use the compiler flag `-DASYNC_WEBSERVER=false`.
 
 # License
 
 esp32-wifi-manager (c) by Martin Verges.
 
-esp32-wifi-manager is licensed under a Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+This project is licensed under a Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
 
 You should have received a copy of the license along with this work.
 If not, see <http://creativecommons.org/licenses/by-nc-sa/4.0/>.

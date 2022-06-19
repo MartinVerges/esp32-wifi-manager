@@ -8,7 +8,11 @@
 #include "wifimanager.h"
 #include "AsyncJson.h"
 #include "ArduinoJson.h"
-#include <ESPAsyncWebServer.h>
+#if ASYNC_WEBSERVER == true
+  #include <ESPAsyncWebServer.h>
+#else
+  #include <WebServer.h>
+#endif
 #include <WiFi.h>
 #include <Preferences.h>
 
@@ -461,39 +465,87 @@ void WIFIMANAGER::stopWifi(bool killTask) {
 }
 
 /**
- * @brief Attach the ESP_AsyncWebServer to the WifiManager to register the RESTful API
- * @param srv AsyncWebServer object
+ * @brief Attach the WebServer to the WifiManager to register the RESTful API
+ * @param srv WebServer object
  */
+#if ASYNC_WEBSERVER == true
 void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
+#else
+void WIFIMANAGER::attachWebServer(WebServer * srv) {
+#endif
   webServer = srv; // store it in the class for later use
 
+#if ASYNC_WEBSERVER == true
+  // not required
+#else
+  // just for debugging
+  webServer->onNotFound([&]() {
+    String uri = WebServer::urlDecode(webServer->uri());  // required to read paths with blanks
+
+     // Dump debug data
+    String message;
+    message.reserve(100);
+    message = F("Error: File not found\n\nURI: ");
+    message += uri;
+    message += F("\nMethod: ");
+    message += (webServer->method() == HTTP_GET) ? "GET" : "POST";
+    message += F("\nArguments: ");
+    message += webServer->args();
+    message += '\n';
+    for (uint8_t i = 0; i < webServer->args(); i++) {
+      message += F(" NAME:");
+      message += webServer->argName(i);
+      message += F("\n VALUE:");
+      message += webServer->arg(i);
+      message += '\n';
+    }
+    message += "path=";
+    message += webServer->arg("path");
+    message += '\n';
+    Serial.print(message);
+  });
+#endif
+
+#if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/softap/start").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
-
     request->send(200, "application/json", "{\"message\":\"Soft AP stopped\"}");
+#else
+  webServer->on((apiPrefix + "/softap/start").c_str(), HTTP_POST, [&]() {
+    webServer->send(200, "application/json", "{\"message\":\"Soft AP stopped\"}");
+#endif
     yield();
     delay(250);
     runSoftAP();
   });
   
+#if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/softap/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
-
     request->send(200, "application/json", "{\"message\":\"Soft AP stopped\"}");
+#else
+  webServer->on((apiPrefix + "/softap/stop").c_str(), HTTP_POST, [&]() {
+    webServer->send(200, "application/json", "{\"message\":\"Soft AP stopped\"}");
+#endif
     yield();
     delay(250); // It's likely that this message won't go trough, but we give it a short time
     stopSoftAp();
   });
-    
+
+#if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/client/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
-
     request->send(200, "application/json", "{\"message\":\"Terminating current Wifi connection\"}");
+#else
+  webServer->on((apiPrefix + "/client/stop").c_str(), HTTP_POST, [&]() {
+    webServer->send(200, "application/json", "{\"message\":\"Terminating current Wifi connection\"}");
+#endif
     yield();
     delay(250); // It's likely that this message won't go trough, but we give it a short time
     stopClient();
   });
-  
+
+#if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/add").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
 
@@ -508,7 +560,11 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
       request->send(500, "application/json", "{\"message\":\"Unable to process data\"}");
     } else request->send(200, "application/json", "{\"message\":\"New AP added\"}");
   });
+#else
+  // FIXME: implement /add
+#endif
 
+#if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/id").c_str(), HTTP_DELETE, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
 
@@ -523,7 +579,11 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
       request->send(500, "application/json", "{\"message\":\"Unable to delete entry\"}");
     } else request->send(200, "application/json", "{\"message\":\"AP deleted\"}");
   });
+#else
+  // FIXME: implement /id
+#endif
 
+#if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/apName").c_str(), HTTP_DELETE, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
     
@@ -538,7 +598,11 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
       request->send(500, "application/json", "{\"message\":\"Unable to delete entry\"}");
     } else request->send(200, "application/json", "{\"message\":\"AP deleted\"}");
   });
+#else
+  // FIXME: implement /apName
+#endif
 
+#if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/configlist").c_str(), HTTP_GET, [&](AsyncWebServerRequest *request) {
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     DynamicJsonDocument jsonDoc(2048);
@@ -558,7 +622,11 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
     response->setContentLength(measureJson(jsonDoc));
     request->send(response);
   });
+#else
+  // FIXME: implement /configlist
+#endif
 
+#if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/scan").c_str(), HTTP_GET, [&](AsyncWebServerRequest *request) {
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     DynamicJsonDocument jsonDoc(4096);
@@ -588,7 +656,11 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
     response->setContentLength(measureJson(jsonDoc));
     request->send(response);
   });
+#else
+  // FIXME: implement /scan
+#endif
 
+#if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/status").c_str(), HTTP_GET, [&](AsyncWebServerRequest *request) {
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     DynamicJsonDocument jsonDoc(1024);
@@ -615,4 +687,7 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
     response->setContentLength(measureJson(jsonDoc));
     request->send(response);
   });
+#else
+  // FIXME: implement /status
+#endif
 }

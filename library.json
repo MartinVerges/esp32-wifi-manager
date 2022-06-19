@@ -1,5 +1,5 @@
 {
-  "name": "ESP32_Wifi_Manager",
+  "name": "ESP32 Wifi Manager",
   "version": "1.0.5",
   "description": "A multi wifi manager for arduino based ESP applications, with RESTful API input wifi credentials, saving them on non volatile memory.",
   "keywords": "esp32, wifi, ap, softap, sta, restful, api, manager, arduino",

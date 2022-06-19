@@ -548,65 +548,83 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
 #if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/add").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
-
     DynamicJsonDocument jsonBuffer(256);
     deserializeJson(jsonBuffer, (const char*)data);
-
+    auto resp = request;
+#else
+  webServer->on((apiPrefix + "/add").c_str(), HTTP_POST, [&]() {
+    if (webServer->args() != 1) {
+      webServer->send(400, "application/json", "{\"message\":\"Bad Request. Only accepting one json body in request!\"}");
+    }
+    DynamicJsonDocument jsonBuffer(256);
+    deserializeJson(jsonBuffer, webServer->arg(0));
+    auto resp = webServer;
+#endif
     if (!jsonBuffer["apName"].is<String>() || !jsonBuffer["apPass"].is<String>()) {
-      request->send(422, "text/plain", "Invalid data");
+      resp->send(422, "application/json", "{\"message\":\"Invalid data\"}");
       return;
     }
     if (!addWifi(jsonBuffer["apName"].as<String>(), jsonBuffer["apPass"].as<String>())) {
-      request->send(500, "application/json", "{\"message\":\"Unable to process data\"}");
-    } else request->send(200, "application/json", "{\"message\":\"New AP added\"}");
+      resp->send(500, "application/json", "{\"message\":\"Unable to process data\"}");
+    } else resp->send(200, "application/json", "{\"message\":\"New AP added\"}");
   });
-#else
-  // FIXME: implement /add
-#endif
 
 #if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/id").c_str(), HTTP_DELETE, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
-
     DynamicJsonDocument jsonBuffer(128);
     deserializeJson(jsonBuffer, (const char*)data);
-
+    auto resp = request;
+#else
+  webServer->on((apiPrefix + "/id").c_str(), HTTP_DELETE, [&]() {
+    if (webServer->args() != 1) {
+      webServer->send(400, "application/json", "{\"message\":\"Bad Request. Only accepting one json body in request!\"}");
+    }
+    DynamicJsonDocument jsonBuffer(256);
+    deserializeJson(jsonBuffer, webServer->arg(0));
+    auto resp = webServer;
+#endif
     if (!jsonBuffer["id"].is<uint8_t>() || jsonBuffer["id"].as<uint8_t>() >= WIFIMANAGER_MAX_APS) {
-      request->send(422, "text/plain", "Invalid data");
+      resp->send(422, "application/json", "{\"message\":\"Invalid data\"}");
       return;
     }
     if (!delWifi(jsonBuffer["id"].as<uint8_t>())) {
-      request->send(500, "application/json", "{\"message\":\"Unable to delete entry\"}");
-    } else request->send(200, "application/json", "{\"message\":\"AP deleted\"}");
+      resp->send(500, "application/json", "{\"message\":\"Unable to delete entry\"}");
+    } else resp->send(200, "application/json", "{\"message\":\"AP deleted\"}");
   });
-#else
-  // FIXME: implement /id
-#endif
 
 #if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/apName").c_str(), HTTP_DELETE, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
-    
     DynamicJsonDocument jsonBuffer(128);
     deserializeJson(jsonBuffer, (const char*)data);
-
+    auto resp = request;
+#else
+  webServer->on((apiPrefix + "/apName").c_str(), HTTP_DELETE, [&]() {
+    if (webServer->args() != 1) {
+      webServer->send(400, "application/json", "{\"message\":\"Bad Request. Only accepting one json body in request!\"}");
+    }
+    DynamicJsonDocument jsonBuffer(256);
+    deserializeJson(jsonBuffer, webServer->arg(0));
+    auto resp = webServer;
+#endif
     if (!jsonBuffer["apName"].is<String>()) {
-      request->send(422, "text/plain", "Invalid data");
+      resp->send(422, "application/json", "{\"message\":\"Invalid data\"}");
       return;
     }
     if (!delWifi(jsonBuffer["apName"].as<String>())) {
-      request->send(500, "application/json", "{\"message\":\"Unable to delete entry\"}");
-    } else request->send(200, "application/json", "{\"message\":\"AP deleted\"}");
+      resp->send(500, "application/json", "{\"message\":\"Unable to delete entry\"}");
+    } else resp->send(200, "application/json", "{\"message\":\"AP deleted\"}");
   });
-#else
-  // FIXME: implement /apName
-#endif
 
 #if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/configlist").c_str(), HTTP_GET, [&](AsyncWebServerRequest *request) {
     AsyncResponseStream *response = request->beginResponseStream("application/json");
+#else
+  webServer->on((apiPrefix + "/configlist").c_str(), HTTP_GET, [&]() {
+    String buffer;
+#endif
     DynamicJsonDocument jsonDoc(2048);
-
     for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
       if (apList[i].apName.length() > 0) {
         JsonObject wifiNet = jsonDoc.createNestedObject();
@@ -615,20 +633,25 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
         wifiNet["apPass"] = apList[i].apPass.length() > 0 ? true : false;
       }
     }
-
+#if ASYNC_WEBSERVER == true
     serializeJson(jsonDoc, *response);
-
     response->setCode(200);
     response->setContentLength(measureJson(jsonDoc));
     request->send(response);
-  });
 #else
-  // FIXME: implement /configlist
+    // Improve me: not that efficient without the stream response
+    serializeJson(jsonDoc, buffer);
+    webServer->send(200, "application/json", buffer.c_str());
 #endif
+  });
 
 #if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/scan").c_str(), HTTP_GET, [&](AsyncWebServerRequest *request) {
     AsyncResponseStream *response = request->beginResponseStream("application/json");
+#else
+  webServer->on((apiPrefix + "/scan").c_str(), HTTP_GET, [&]() {
+    String buffer;
+#endif
     DynamicJsonDocument jsonDoc(4096);
 
     int scanResult;
@@ -638,31 +661,42 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
     uint8_t* bssid;
     int32_t channel;
 
-    scanResult = WiFi.scanNetworks(false, true);
-    for (int8_t i = 0; i < scanResult; i++) {
-      WiFi.getNetworkInfo(i, ssid, encryptionType, rssi, bssid, channel);
+    scanResult = WiFi.scanComplete();
+    if (scanResult == WIFI_SCAN_FAILED) {
+      scanResult = WiFi.scanNetworks(true, true);   // FIXME: scanNetworks is disconnecting clients!
+      jsonDoc["status"] = "scanning";
+    } else if (scanResult > 0) {
+      for (int8_t i = 0; i < scanResult; i++) {
+        WiFi.getNetworkInfo(i, ssid, encryptionType, rssi, bssid, channel);
 
-      JsonObject wifiNet = jsonDoc.createNestedObject();
-      wifiNet["ssid"] = ssid;
-      wifiNet["encryptionType"] = encryptionType;
-      wifiNet["rssi"] = rssi;
-      wifiNet["channel"] = channel;
-      yield();
+        JsonObject wifiNet = jsonDoc.createNestedObject();
+        wifiNet["ssid"] = ssid;
+        wifiNet["encryptionType"] = encryptionType;
+        wifiNet["rssi"] = rssi;
+        wifiNet["channel"] = channel;
+        yield();
+      }
+      WiFi.scanDelete();
     }
-
+#if ASYNC_WEBSERVER == true
     serializeJson(jsonDoc, *response);
-
     response->setCode(200);
     response->setContentLength(measureJson(jsonDoc));
     request->send(response);
-  });
 #else
-  // FIXME: implement /scan
+    // Improve me: not that efficient without the stream response
+    serializeJson(jsonDoc, buffer);
+    webServer->send(200, "application/json", buffer.c_str());
 #endif
+  });
 
 #if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/status").c_str(), HTTP_GET, [&](AsyncWebServerRequest *request) {
     AsyncResponseStream *response = request->beginResponseStream("application/json");
+#else
+  webServer->on((apiPrefix + "/status").c_str(), HTTP_GET, [&]() {
+    String buffer;
+#endif
     DynamicJsonDocument jsonDoc(1024);
 
     jsonDoc["ssid"] = WiFi.SSID();
@@ -681,13 +715,15 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
     jsonDoc["getHeapSize"] = ESP.getHeapSize();
     jsonDoc["freeHeap"] = ESP.getFreeHeap();
 
+#if ASYNC_WEBSERVER == true
     serializeJson(jsonDoc, *response);
-
     response->setCode(200);
     response->setContentLength(measureJson(jsonDoc));
     request->send(response);
-  });
 #else
-  // FIXME: implement /status
+    // Improve me: not that efficient without the stream response
+    serializeJson(jsonDoc, buffer);
+    webServer->send(200, "application/json", buffer.c_str());
 #endif
+  });
 }

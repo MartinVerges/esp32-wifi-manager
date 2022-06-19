@@ -1,6 +1,6 @@
 # ESP32 Wifi Manager 
 
-This multi wifi manager runs your ESP32 in a AP+STA mode.
+This multi wifi manager runs your ESP32 in a AP+STA mode in a non blocking mode on core 0.
 This way you can easily start a softAP and scan for Wifi Networks while beeing conntected to some wifi.
 
 You can store multiple SSIDs and it will try to connect, reconnect and optionally fallback to softAP.
@@ -41,7 +41,7 @@ It won't give you a premade styled UI to configure the SSID credentials.
 | Method | Request URL             | Json Body                                    | Info                                                            |
 | ------ | ----------------------- | -------------------------------------------- | --------------------------------------------------------------- |
 | GET    | /api/wifi/configlist    | none                                         | Get the configured SSID AP list                                 |
-| GET    | /api/wifi/scan          | none                                         | Scan for Networks in Range                                      |
+| GET    | /api/wifi/scan          | none                                         | Async Scan for Networks in Range.                               |
 | GET    | /api/wifi/status        | none                                         | Show Status of the ESP32                                        |
 | POST   | /api/wifi/add           | `{ "apName": "mySSID", "apPass": "secret" }` | Add a new SSID to the AP list                                   |
 | DELETE | /api/wifi/id            | `{ "id": 1 }`                                | Drop the AP list entry using the ID                             |
@@ -49,6 +49,21 @@ It won't give you a premade styled UI to configure the SSID credentials.
 | POST   | /api/wifi/softAp/start  | none                                         | Open/Create a softAP. Used to switch from client to AP mode     |
 | POST   | /api/wifi/softAp/stop   | none                                         | Disconnect the softAP and start to connect to known SSIDs       |
 | POST   | /api/wifi/client/stop   | none                                         | Disconnect current wifi connection, start to search and connect |
+
+### Async scanning
+
+Due to the way scanning is done on a ESP32, it looks like it's common that your client disconnects.
+So wait long enough between first and second scan.
+On the 1st request a response body containing `{"status":"scanning"}` will be send to the client.
+When you do a scan after long enough wait time, you receive an array of objects.
+Example: 
+```
+[ 
+   {"channel": 1, "encryptionType": 3, "rssi": -80, "ssid": "My Wifi Network"},
+   {"channel": 11, "encryptionType": 0, "rssi": -50, "ssid": "My Public Network"}
+]
+```
+PS: If you find a way to prevent the client disconnect on scan, please let me know!
 
 ## Dependencies
 

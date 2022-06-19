@@ -634,14 +634,14 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
       }
     }
 #if ASYNC_WEBSERVER == true
-    serializeJson(jsonDoc, *response);
+    serializeJson(jsonDoc.to<JsonArray>(), *response);
     response->setCode(200);
     response->setContentLength(measureJson(jsonDoc));
     request->send(response);
 #else
     // Improve me: not that efficient without the stream response
-    serializeJson(jsonDoc, buffer);
-    webServer->send(200, "application/json", buffer.c_str());
+    serializeJson(jsonDoc.to<JsonArray>(), buffer);
+    webServer->send(200, "application/json", (buffer.equals("null") ? "{}" : buffer));
 #endif
   });
 
@@ -686,7 +686,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
 #else
     // Improve me: not that efficient without the stream response
     serializeJson(jsonDoc, buffer);
-    webServer->send(200, "application/json", buffer.c_str());
+    webServer->send(200, "application/json", buffer);
 #endif
   });
 
@@ -723,7 +723,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
 #else
     // Improve me: not that efficient without the stream response
     serializeJson(jsonDoc, buffer);
-    webServer->send(200, "application/json", buffer.c_str());
+    webServer->send(200, "application/json", buffer);
 #endif
   });
 }

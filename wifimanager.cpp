@@ -625,22 +625,23 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
     String buffer;
 #endif
     DynamicJsonDocument jsonDoc(2048);
+    auto jsonArray = jsonDoc.to<JsonArray>();
     for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
       if (apList[i].apName.length() > 0) {
-        JsonObject wifiNet = jsonDoc.createNestedObject();
+        JsonObject wifiNet = jsonArray.createNestedObject();
         wifiNet["id"] = i;
         wifiNet["apName"] = apList[i].apName;
         wifiNet["apPass"] = apList[i].apPass.length() > 0 ? true : false;
       }
     }
 #if ASYNC_WEBSERVER == true
-    serializeJson(jsonDoc.to<JsonArray>(), *response);
+    serializeJson(jsonArray, *response);
     response->setCode(200);
     response->setContentLength(measureJson(jsonDoc));
     request->send(response);
 #else
     // Improve me: not that efficient without the stream response
-    serializeJson(jsonDoc.to<JsonArray>(), buffer);
+    serializeJson(jsonArray, buffer);
     webServer->send(200, "application/json", (buffer.equals("null") ? "{}" : buffer));
 #endif
   });

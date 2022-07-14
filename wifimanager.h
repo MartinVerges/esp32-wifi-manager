@@ -103,7 +103,7 @@ class WIFIMANAGER {
     bool runSoftAP(String apName = "");
 
     // Disconnect/Stop SoftAP Mode
-    void stopSoftAp();
+    void stopSoftAP();
 
     // Disconnect/Stop STA Mode
     void stopClient();

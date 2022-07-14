@@ -69,7 +69,7 @@ WIFIMANAGER::WIFIMANAGER(const char * ns) {
 
   // AP on/off
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
-    Serial.println(F("[WIFI] AP mode started!"));
+    Serial.println(F("[WIFI] onEvent() AP mode started!"));
     softApRunning = true;
 #if ESP_ARDUINO_VERSION_MAJOR >= 2
     }, ARDUINO_EVENT_WIFI_AP_START); // arduino-esp32 2.0.0 and later
@@ -77,7 +77,7 @@ WIFIMANAGER::WIFIMANAGER(const char * ns) {
     }, SYSTEM_EVENT_AP_START); // arduino-esp32 1.0.6
 #endif
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
-    Serial.println(F("[WIFI] AP mode stopped!"));
+    Serial.println(F("[WIFI] onEvent() AP mode stopped!"));
     softApRunning = false;
 #if ESP_ARDUINO_VERSION_MAJOR >= 2
     }, ARDUINO_EVENT_WIFI_AP_STOP); // arduino-esp32 2.0.0 and later
@@ -86,14 +86,14 @@ WIFIMANAGER::WIFIMANAGER(const char * ns) {
 #endif
   // AP client join/leave
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
-    Serial.println(F("[WIFI] New client connected to softAP!"));
+    Serial.println(F("[WIFI] onEvent() New client connected to softAP!"));
 #if ESP_ARDUINO_VERSION_MAJOR >= 2
     }, ARDUINO_EVENT_WIFI_AP_STACONNECTED); // arduino-esp32 2.0.0 and later
 #else
     }, SYSTEM_EVENT_AP_STACONNECTED); // arduino-esp32 1.0.6
 #endif
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
-    Serial.println(F("[WIFI] Client disconnected from softAP!"));
+    Serial.println(F("[WIFI] onEvent() Client disconnected from softAP!"));
 #if ESP_ARDUINO_VERSION_MAJOR >= 2
     }, ARDUINO_EVENT_WIFI_AP_STADISCONNECTED); // arduino-esp32 2.0.0 and later
 #else
@@ -304,7 +304,7 @@ void WIFIMANAGER::loop() {
     Serial.println(WiFi.SSID());
   } else {
     if (softApRunning) {
-      Serial.printf("[WIFI] Not trying to connect, as SoftAP has %d clients connected!\n", WiFi.softAPgetStationNum());
+      Serial.printf("[WIFI] Not trying to connect to a known SSID. SoftAP has %d clients connected!\n", WiFi.softAPgetStationNum());
     } else {
       // let's try to connect to some WiFi in Range
       if (!tryConnect()) {
@@ -321,7 +321,8 @@ void WIFIMANAGER::loop() {
       return;
     }
     Serial.println(F("[WIFI] Running in AP mode but timeout reached. Closing AP!"));
-    stopSoftAp();
+    stopSoftAP();
+    delay(100);
   }
 }
 
@@ -339,7 +340,7 @@ bool WIFIMANAGER::tryConnect() {
   }
 
   if (softApRunning) {
-    Serial.printf("[WIFI] Not trying to connect, as SoftAP has %d clients connected!\n", WiFi.softAPgetStationNum());
+    Serial.printf("[WIFI] Not trying to connect. SoftAP has %d clients connected!\n", WiFi.softAPgetStationNum());
     return false;
   }
 
@@ -348,6 +349,7 @@ bool WIFIMANAGER::tryConnect() {
     // only one configured SSID, skip scanning and try to connect to this specific one.
     choosenAp = getApEntry();
   } else {
+    WiFi.mode(WIFI_STA);
     int8_t scanResult = WiFi.scanNetworks(false, true);
     if(scanResult <= 0) {
       Serial.println(F("[WIFI] Unable to find WIFI networks in range to this device!"));
@@ -401,7 +403,7 @@ bool WIFIMANAGER::tryConnect() {
         Serial.printf("[WIFI] SSID   : %s\n", WiFi.SSID().c_str());
         Serial.printf("[WIFI] IP     : %s\n", WiFi.localIP().toString().c_str());
 
-        stopSoftAp();
+        stopSoftAP();
         return true;
         break;
       case WL_NO_SSID_AVAIL:
@@ -431,6 +433,7 @@ bool WIFIMANAGER::runSoftAP(String apName) {
   if (apName == "") apName = "ESP_" + String((uint32_t)ESP.getEfuseMac());
   Serial.printf("[WIFI] Starting configuration portal on AP SSID %s\n", apName.c_str());
 
+  WiFi.mode(WIFI_AP);
   bool state = WiFi.softAP(apName.c_str());
   if (state) {
     IPAddress IP = WiFi.softAPIP();
@@ -446,8 +449,9 @@ bool WIFIMANAGER::runSoftAP(String apName) {
 /**
  * @brief Stop/Disconnect a current running SoftAP
  */
-void WIFIMANAGER::stopSoftAp() {
+void WIFIMANAGER::stopSoftAP() {
   WiFi.softAPdisconnect();
+  WiFi.mode(WIFI_STA);
 }
 
 /**
@@ -463,7 +467,7 @@ void WIFIMANAGER::stopClient() {
  */
 void WIFIMANAGER::stopWifi(bool killTask) {
   if (killTask) vTaskDelete(WifiCheckTask);
-  stopSoftAp();
+  stopSoftAP();
   stopClient();
 }
 
@@ -532,7 +536,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
 #endif
     yield();
     delay(250); // It's likely that this message won't go trough, but we give it a short time
-    stopSoftAp();
+    stopSoftAP();
   });
 
 #if ASYNC_WEBSERVER == true

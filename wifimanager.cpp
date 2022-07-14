@@ -60,8 +60,11 @@ void WIFIMANAGER::startBackgroundTask() {
  */
 WIFIMANAGER::WIFIMANAGER(const char * ns) {
   NVS = (char *)ns;
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.disconnect();
+ 
+// Disabled disconnect on construct to avoid unneccessary calls
+//  WiFi.mode(WIFI_AP_STA);
+//  WiFi.disconnect();
+
 //  WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
 
   // AP on/off

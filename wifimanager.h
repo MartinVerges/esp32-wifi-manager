@@ -50,10 +50,10 @@ class WIFIMANAGER {
     bool softApRunning = false;         // Due to lack of functions, we have to remember if the AP is already running...
     bool createFallbackAP = true;       // Create an AP for configuration if no other connection is available
 
-    uint64_t lastWifiCheck = 0;         // Time of last Wifi health check
-    uint32_t intervalWifiCheck = 15000; // Interval of the Wifi health checks
-    uint64_t startApTime = 0;           // Time when the AP was started
-    uint32_t timeoutApMillis = 300000;  // Timeout of an AP when no client is connected, if timeout reached rescan, tryconnect or createAP
+    uint64_t lastWifiCheckMillis = 0;   // Time of last Wifi health check
+    uint32_t intervalWifiCheckMillis = 15000; // Interval of the Wifi health checks
+    uint64_t startApTimeMillis = 0;     // Time when the AP was started
+    uint32_t timeoutApMillis = 120000;  // Timeout of an AP when no client is connected, if timeout reached rescan, tryconnect or createAP
 
     // Wipe the apList credentials
     void clearApList();

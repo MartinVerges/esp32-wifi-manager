@@ -285,8 +285,8 @@ uint8_t WIFIMANAGER::getApEntry() {
  * @details regulary check if the connection is up&running, try to reconnect or create a fallback AP
  */
 void WIFIMANAGER::loop() {
-  if (millis() - lastWifiCheck < intervalWifiCheck) return;
-  lastWifiCheck = millis();
+  if (millis() - lastWifiCheckMillis < intervalWifiCheckMillis) return;
+  lastWifiCheckMillis = millis();
 
   if(WiFi.status() == WL_CONNECTED) {
     // Check if we are connected to a well known SSID
@@ -303,7 +303,7 @@ void WIFIMANAGER::loop() {
     Serial.print(F("[WIFI] We are connected to an unknown SSID ignoring. Connected to: "));
     Serial.println(WiFi.SSID());
   } else {
-    if (softApRunning && WiFi.softAPgetStationNum() > 0) {
+    if (softApRunning) {
       Serial.printf("[WIFI] Not trying to connect, as SoftAP has %d clients connected!\n", WiFi.softAPgetStationNum());
     } else {
       // let's try to connect to some WiFi in Range
@@ -314,10 +314,10 @@ void WIFIMANAGER::loop() {
     }
   }
   
-  if (softApRunning && millis() - startApTime > timeoutApMillis) {
+  if (softApRunning && millis() - startApTimeMillis > timeoutApMillis) {
     if (WiFi.softAPgetStationNum() > 0) {
       Serial.printf("[WIFI] SoftAP has %d clients connected!\n", WiFi.softAPgetStationNum());
-      startApTime = millis(); // reset timeout as someone is connected
+      startApTimeMillis = millis(); // reset timeout as someone is connected
       return;
     }
     Serial.println(F("[WIFI] Running in AP mode but timeout reached. Closing AP!"));
@@ -338,7 +338,7 @@ bool WIFIMANAGER::tryConnect() {
     return false;
   }
 
-  if (softApRunning && WiFi.softAPgetStationNum() > 0) {
+  if (softApRunning) {
     Serial.printf("[WIFI] Not trying to connect, as SoftAP has %d clients connected!\n", WiFi.softAPgetStationNum());
     return false;
   }
@@ -426,7 +426,7 @@ bool WIFIMANAGER::tryConnect() {
  */
 bool WIFIMANAGER::runSoftAP(String apName) {
   if (softApRunning) return true;
-  startApTime = millis();
+  startApTimeMillis = millis();
 
   if (apName == "") apName = "ESP_" + String((uint32_t)ESP.getEfuseMac());
   Serial.printf("[WIFI] Starting configuration portal on AP SSID %s\n", apName.c_str());

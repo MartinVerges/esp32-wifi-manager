@@ -288,7 +288,7 @@ void WIFIMANAGER::loop() {
   if (millis() - lastWifiCheckMillis < intervalWifiCheckMillis) return;
   lastWifiCheckMillis = millis();
 
-  if(WiFi.status() == WL_CONNECTED) {
+  if(WiFi.waitForConnectResult() == WL_CONNECTED) {
     // Check if we are connected to a well known SSID
     for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
       if (WiFi.SSID() == apList[i].apName) {
@@ -389,13 +389,13 @@ bool WIFIMANAGER::tryConnect() {
     );
 
     WiFi.begin(apList[choosenAp].apName.c_str(), apList[choosenAp].apPass.c_str());
-    wl_status_t status = WiFi.status();
+    wl_status_t status = WiFi.waitForConnectResult();
 
     auto startTime = millis();
     // wait for connection, fail, or timeout
     while(status != WL_CONNECTED && status != WL_NO_SSID_AVAIL && status != WL_CONNECT_FAILED && (millis() - startTime) <= 10000) {
         delay(10);
-        status = WiFi.status();
+        status = WiFi.waitForConnectResult();
     }
     switch(status) {
       case WL_CONNECTED:

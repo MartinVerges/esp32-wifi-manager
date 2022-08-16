@@ -389,13 +389,13 @@ bool WIFIMANAGER::tryConnect() {
     );
 
     WiFi.begin(apList[choosenAp].apName.c_str(), apList[choosenAp].apPass.c_str());
-    wl_status_t status = (wl_status_t)WiFi.waitForConnectResult();
+    wl_status_t status = (wl_status_t)WiFi.waitForConnectResult(5000UL);
 
     auto startTime = millis();
     // wait for connection, fail, or timeout
     while(status != WL_CONNECTED && status != WL_NO_SSID_AVAIL && status != WL_CONNECT_FAILED && (millis() - startTime) <= 10000) {
         delay(10);
-        status = (wl_status_t)WiFi.waitForConnectResult();
+        status = (wl_status_t)WiFi.waitForConnectResult(5000UL);
     }
     switch(status) {
       case WL_IDLE_STATUS:

@@ -398,7 +398,16 @@ bool WIFIMANAGER::tryConnect() {
         status = (wl_status_t)WiFi.waitForConnectResult();
     }
     switch(status) {
-      case WL_CONNECTED:
+      case WL_IDLE_STATUS:
+        Serial.println(F("[WIFI] Connecting failed (0): Idle"));
+        break;
+      case WL_NO_SSID_AVAIL:
+        Serial.println(F("[WIFI] Connection failed (1): The AP can't be found."));
+        break;
+      case WL_SCAN_COMPLETED:
+        Serial.println(F("[WIFI] Connecting failed (2): Scan completed"));
+        break;
+      case WL_CONNECTED: // 3
         Serial.println(F("[WIFI] Connection successful."));
         Serial.printf("[WIFI] SSID   : %s\n", WiFi.SSID().c_str());
         Serial.printf("[WIFI] IP     : %s\n", WiFi.localIP().toString().c_str());
@@ -406,11 +415,17 @@ bool WIFIMANAGER::tryConnect() {
         stopSoftAP();
         return true;
         break;
-      case WL_NO_SSID_AVAIL:
-        Serial.println(F("[WIFI] Connection failed: The AP can't be found."));
-        break;
       case WL_CONNECT_FAILED:
-        Serial.println(F("[WIFI] Connecting failed: Unknown reason"));
+        Serial.println(F("[WIFI] Connecting failed (4): Unknown reason"));
+        break;
+      case WL_CONNECTION_LOST:
+        Serial.println(F("[WIFI] Connecting failed (5): Connection lost"));
+        break;
+      case WL_DISCONNECTED:
+        Serial.println(F("[WIFI] Connecting failed (6): Disconnected"));
+        break;
+      case WL_NO_SHIELD:
+        Serial.println(F("[WIFI] Connecting failed (255): No Wifi shield found"));
         break;
       default:
         Serial.printf("[WIFI] Connecting Failed (Status: %d).\n", status);

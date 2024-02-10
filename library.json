@@ -18,7 +18,7 @@
   ],
   "license": "CC-BY-NC-SA-4.0",
   "dependencies": {
-    "bblanchon/ArduinoJson": "^6.19.2"
+    "bblanchon/ArduinoJson": "^7.0.3"
   },
   "frameworks": "arduino",
   "platforms": "espressif32"

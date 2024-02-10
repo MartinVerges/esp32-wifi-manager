@@ -570,7 +570,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
 #if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/add").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
-    DynamicJsonDocument jsonBuffer(256);
+    JsonDocument jsonBuffer;
     deserializeJson(jsonBuffer, (const char*)data);
     auto resp = request;
 #else
@@ -578,7 +578,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
     if (webServer->args() != 1) {
       webServer->send(400, "application/json", "{\"message\":\"Bad Request. Only accepting one json body in request!\"}");
     }
-    DynamicJsonDocument jsonBuffer(256);
+    JsonDocument jsonBuffer;
     deserializeJson(jsonBuffer, webServer->arg(0));
     auto resp = webServer;
 #endif
@@ -594,7 +594,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
 #if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/id").c_str(), HTTP_DELETE, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
-    DynamicJsonDocument jsonBuffer(128);
+    JsonDocument jsonBuffer;
     deserializeJson(jsonBuffer, (const char*)data);
     auto resp = request;
 #else
@@ -602,7 +602,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
     if (webServer->args() != 1) {
       webServer->send(400, "application/json", "{\"message\":\"Bad Request. Only accepting one json body in request!\"}");
     }
-    DynamicJsonDocument jsonBuffer(256);
+    JsonDocument jsonBuffer;
     deserializeJson(jsonBuffer, webServer->arg(0));
     auto resp = webServer;
 #endif
@@ -618,7 +618,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
 #if ASYNC_WEBSERVER == true
   webServer->on((apiPrefix + "/apName").c_str(), HTTP_DELETE, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
-    DynamicJsonDocument jsonBuffer(128);
+    JsonDocument jsonBuffer;
     deserializeJson(jsonBuffer, (const char*)data);
     auto resp = request;
 #else
@@ -626,7 +626,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
     if (webServer->args() != 1) {
       webServer->send(400, "application/json", "{\"message\":\"Bad Request. Only accepting one json body in request!\"}");
     }
-    DynamicJsonDocument jsonBuffer(256);
+    JsonDocument jsonBuffer;
     deserializeJson(jsonBuffer, webServer->arg(0));
     auto resp = webServer;
 #endif
@@ -646,7 +646,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
   webServer->on((apiPrefix + "/configlist").c_str(), HTTP_GET, [&]() {
     String buffer;
 #endif
-    DynamicJsonDocument jsonDoc(2048);
+    JsonDocument jsonDoc;
     auto jsonArray = jsonDoc.to<JsonArray>();
     for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
       if (apList[i].apName.length() > 0) {
@@ -675,7 +675,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
   webServer->on((apiPrefix + "/scan").c_str(), HTTP_GET, [&]() {
     String buffer;
 #endif
-    DynamicJsonDocument jsonDoc(4096);
+    JsonDocument jsonDoc;
 
     int scanResult;
     String ssid;
@@ -720,7 +720,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
   webServer->on((apiPrefix + "/status").c_str(), HTTP_GET, [&]() {
     String buffer;
 #endif
-    DynamicJsonDocument jsonDoc(1024);
+    JsonDocument jsonDoc;
 
     jsonDoc["ssid"] = WiFi.SSID();
     jsonDoc["signalStrengh"] = WiFi.RSSI();

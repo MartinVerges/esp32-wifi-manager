@@ -537,8 +537,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
 #endif
 
 #if ASYNC_WEBSERVER == true
-  webServer->on((apiPrefix + "/softap/start").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
-    [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
+  webServer->on((apiPrefix + "/softap/start").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request) {
     request->send(200, "application/json", "{\"message\":\"Soft AP stopped\"}");
 #else
   webServer->on((apiPrefix + "/softap/start").c_str(), HTTP_POST, [&]() {
@@ -550,8 +549,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
   });
   
 #if ASYNC_WEBSERVER == true
-  webServer->on((apiPrefix + "/softap/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
-    [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
+  webServer->on((apiPrefix + "/softap/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request) {
     request->send(200, "application/json", "{\"message\":\"Soft AP stopped\"}");
 #else
   webServer->on((apiPrefix + "/softap/stop").c_str(), HTTP_POST, [&]() {
@@ -563,8 +561,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
   });
 
 #if ASYNC_WEBSERVER == true
-  webServer->on((apiPrefix + "/client/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
-    [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
+  webServer->on((apiPrefix + "/client/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request) {
     request->send(200, "application/json", "{\"message\":\"Terminating current Wifi connection\"}");
 #else
   webServer->on((apiPrefix + "/client/stop").c_str(), HTTP_POST, [&]() {

@@ -151,14 +151,16 @@ bool WIFIMANAGER::loadFromNVS() {
     char tmpKey[10] = { 0 };
     for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
       sprintf(tmpKey, "apName%d", i);
-      String apName = preferences.getString(tmpKey, "");
-      if (apName.length() > 0) {
-        sprintf(tmpKey, "apPass%d", i);
-        String apPass = preferences.getString(tmpKey);
-        Serial.printf("[WIFI] Load SSID '%s' to %d. slot.\n", apName.c_str(), i+1);
-        apList[i].apName = apName;
-        apList[i].apPass = apPass;
-        configuredSSIDs++;
+      if (preferences.getType(tmpKey) == PT_STR) {
+        String apName = preferences.getString(tmpKey, "");
+        if (apName.length() > 0) {
+          sprintf(tmpKey, "apPass%d", i);
+          String apPass = preferences.getString(tmpKey);
+          Serial.printf("[WIFI] Load SSID '%s' to %d. slot.\n", apName.c_str(), i+1);
+          apList[i].apName = apName;
+          apList[i].apPass = apPass;
+          configuredSSIDs++;
+        }
       }
     }
     preferences.end();

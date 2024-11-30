@@ -32,6 +32,7 @@ void wifiTask(void* param) {
     wifimanager->loop();
     yield();
     vTaskDelay(xDelay);
+  }
 }
 
 /**
@@ -51,7 +52,7 @@ void WIFIMANAGER::startBackgroundTask() {
     4096,   // Stack size in words
     this,   // Task input parameter
     1,      // Priority of the task
-    &wifiCheckTask,  // Task handle.
+    &WifiCheckTask,  // Task handle.
     0       // Core where the task should run
   );
 
@@ -133,12 +134,11 @@ bool WIFIMANAGER::getFallbackState() {
  * @details This only affects memory, not the storage!
  * @details If you wan't to persist this, you need to call writeToNVS()
  */
-bool WIFIMANAGER::clearApList() {
-  if (!apList.clear()) {
-    Serial.println("Fehler beim Löschen der AP-Liste");
-    return false;
+void WIFIMANAGER::clearApList() {
+  for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
+    apList[i].apName = "";
+    apList[i].apPass = "";
   }
-  return true;
 }
 
 /**
@@ -537,7 +537,8 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
 #endif
 
 #if ASYNC_WEBSERVER == true
-  webServer->on((apiPrefix + "/softap/start").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}) {
+  webServer->on((apiPrefix + "/softap/start").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
+    [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
     request->send(200, "application/json", "{\"message\":\"Soft AP stopped\"}");
 #else
   webServer->on((apiPrefix + "/softap/start").c_str(), HTTP_POST, [&]() {
@@ -549,7 +550,8 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
   });
   
 #if ASYNC_WEBSERVER == true
-  webServer->on((apiPrefix + "/softap/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}) {
+  webServer->on((apiPrefix + "/softap/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
+    [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
     request->send(200, "application/json", "{\"message\":\"Soft AP stopped\"}");
 #else
   webServer->on((apiPrefix + "/softap/stop").c_str(), HTTP_POST, [&]() {
@@ -561,7 +563,8 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
   });
 
 #if ASYNC_WEBSERVER == true
-  webServer->on((apiPrefix + "/client/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}) {
+  webServer->on((apiPrefix + "/client/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
+    [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
     request->send(200, "application/json", "{\"message\":\"Terminating current Wifi connection\"}");
 #else
   webServer->on((apiPrefix + "/client/stop").c_str(), HTTP_POST, [&]() {

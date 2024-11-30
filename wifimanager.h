@@ -56,7 +56,7 @@ class WIFIMANAGER {
     uint32_t timeoutApMillis = 120000;  // Timeout of an AP when no client is connected, if timeout reached rescan, tryconnect or createAP
 
     // Wipe the apList credentials
-    bool clearApList();
+    void clearApList();
 
     // Get id of the first non empty entry
     uint8_t getApEntry();

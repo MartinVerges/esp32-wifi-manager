@@ -8,7 +8,7 @@
 #ifndef WIFIMANAGER_h
 #define WIFIMANAGER_h
 
-#ifndef WIFIMANAGER_MAX_APS 
+#ifndef WIFIMANAGER_MAX_APS
 #define WIFIMANAGER_MAX_APS 4   // Valid range is uint8_t
 #endif
 
@@ -55,6 +55,9 @@ class WIFIMANAGER {
     uint64_t startApTimeMillis = 0;     // Time when the AP was started
     uint32_t timeoutApMillis = 120000;  // Timeout of an AP when no client is connected, if timeout reached rescan, tryconnect or createAP
 
+    String softApName;                  // Name of the soft AP if created, default to ESP_XXXXXXXX if empty
+    String softApPass;                  // Password for the soft AP, default to no password (empty)
+
     // Wipe the apList credentials
     void clearApList();
 
@@ -74,8 +77,8 @@ class WIFIMANAGER {
     // Get the current fallback state
     bool getFallbackState();
 
-    // Call to run the Task 
-    void startBackgroundTask();
+    // Call to run the Task in the background
+    void startBackgroundTask(String apName = "", String apPass = "");
 
     // Attach a webserver and register api routes
 #if ASYNC_WEBSERVER == true
@@ -99,8 +102,11 @@ class WIFIMANAGER {
     // Check if a SSID is stored in the config
     bool configAvailable();
 
+    // Preconfigure the SoftAP
+    void configueSoftAp(String apName = "", String apPass = "");
+
     // Start a SoftAP, called if no wifi can be connected
-    bool runSoftAP(String apName = "");
+    bool runSoftAP(String apName = "", String apPass = "");
 
     // Disconnect/Stop SoftAP Mode
     void stopSoftAP();

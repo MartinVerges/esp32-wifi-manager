@@ -42,7 +42,9 @@ void wifiTask(void* param) {
  * and then start a background task, which will keep monitoring and trying to reconnect
  * to the configured WIFI(s) in case the connection drops.
  */
-void WIFIMANAGER::startBackgroundTask() {
+void WIFIMANAGER::startBackgroundTask(String softApName, String softApPass) {
+  if (softApName.length()) this->softApName = softApName;
+  if (softApPass.length()) this->softApPass = softApPass;
   loadFromNVS();
   tryConnect();
 
@@ -321,7 +323,7 @@ void WIFIMANAGER::loop() {
       }
     }
   }
-  
+
   if (softApRunning && millis() - startApTimeMillis > timeoutApMillis) {
     if (WiFi.softAPgetStationNum() > 0) {
       Serial.printf("[WIFI] SoftAP has %d clients connected!\n", WiFi.softAPgetStationNum());
@@ -391,7 +393,7 @@ bool WIFIMANAGER::tryConnect() {
     Serial.println(F("[WIFI] Unable to find an SSID to connect to!"));
     return false;
   } else {
-    Serial.printf("[WIFI] Trying to connect to SSID %s with password %s.\n", 
+    Serial.printf("[WIFI] Trying to connect to SSID %s with password %s.\n",
       apList[choosenAp].apName.c_str(),
       (apList[choosenAp].apPass.length() > 0 ? "'***'" : "''")
     );
@@ -443,21 +445,29 @@ bool WIFIMANAGER::tryConnect() {
   return false;
 }
 
+void WIFIMANAGER::configueSoftAp(String apName, String apPass) {
+  this->softApName = apName;
+  this->softApPass = apPass;
+}
+
 /**
  * @brief Start a SoftAP for direct client access
  * @param apName name of the AP to create (default is ESP_XXXXXXXX)
  * @return true on success
  * @return false o error or if a SoftAP already runs
  */
-bool WIFIMANAGER::runSoftAP(String apName) {
+bool WIFIMANAGER::runSoftAP(String apName, String apPass) {
+  if (apName.length()) this->softApName = apName;
+  if (apPass.length()) this->softApPass = apPass;
+
   if (softApRunning) return true;
   startApTimeMillis = millis();
 
-  if (apName == "") apName = "ESP_" + String((uint32_t)ESP.getEfuseMac());
-  Serial.printf("[WIFI] Starting configuration portal on AP SSID %s\n", apName.c_str());
+  if (this->softApName == "") this->softApName = "ESP_" + String((uint32_t)ESP.getEfuseMac());
+  Serial.printf("[WIFI] Starting configuration portal on AP SSID %s\n", this->softApName.c_str());
 
   WiFi.mode(WIFI_AP);
-  bool state = WiFi.softAP(apName.c_str());
+  bool state = WiFi.softAP(this->softApName.c_str(), (this->softApPass.length() ? this->softApPass.c_str() : NULL));
   if (state) {
     IPAddress IP = WiFi.softAPIP();
     Serial.print(F("[WIFI] AP created. My IP is: "));
@@ -735,11 +745,11 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
     jsonDoc["nm"] = WiFi.subnetMask().toString();
 
     jsonDoc["hostname"] = WiFi.getHostname();
-    
+
     jsonDoc["chipModel"] = ESP.getChipModel();
     jsonDoc["chipRevision"] = ESP.getChipRevision();
     jsonDoc["chipCores"] = ESP.getChipCores();
-    
+
     jsonDoc["getHeapSize"] = ESP.getHeapSize();
     jsonDoc["freeHeap"] = ESP.getFreeHeap();
 

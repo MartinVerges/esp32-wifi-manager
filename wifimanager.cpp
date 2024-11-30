@@ -1,6 +1,6 @@
 /**
  * Wifi Manager
- * (c) 2022 Martin Verges
+ * (c) 2022-2024 Martin Verges
  *
  * Licensed under CC BY-NC-SA 4.0
  * (Attribution-NonCommercial-ShareAlike 4.0 International)
@@ -24,7 +24,6 @@ void wifiTask(void* param) {
   yield();
   delay(500); // wait a short time until everything is setup before executing the loop forever
   yield();
-
   const TickType_t xDelay = 10000 / portTICK_PERIOD_MS;
   WIFIMANAGER * wifimanager = (WIFIMANAGER *) param;
 
@@ -33,24 +32,32 @@ void wifiTask(void* param) {
     wifimanager->loop();
     yield();
     vTaskDelay(xDelay);
-  }
 }
 
 /**
- * @brief Load config from NVS, start to connect to WIFI and initiate a background task to keep it up
+ * @brief Start the background task, which will take care of the Wifi connection
+ *
+ * This method will load the configuration from NVS, try to connect to the configured WIFI(s)
+ * and then start a background task, which will keep monitoring and trying to reconnect
+ * to the configured WIFI(s) in case the connection drops.
  */
 void WIFIMANAGER::startBackgroundTask() {
   loadFromNVS();
   tryConnect();
-  xTaskCreatePinnedToCore(
+
+  BaseType_t taskCreated = xTaskCreatePinnedToCore(
     wifiTask,
     "WifiManager",
-    4000,   // Stack size in words
+    4096,   // Stack size in words
     this,   // Task input parameter
-    0,      // Priority of the task
-    &WifiCheckTask,  // Task handle.
+    1,      // Priority of the task
+    &wifiCheckTask,  // Task handle.
     0       // Core where the task should run
   );
+
+  if (taskCreated != pdPASS) {
+    Serial.println("[ERROR] WifiManager: Error creating background task");
+  }
 }
 
 /**
@@ -60,12 +67,6 @@ void WIFIMANAGER::startBackgroundTask() {
  */
 WIFIMANAGER::WIFIMANAGER(const char * ns) {
   NVS = (char *)ns;
- 
-// Disabled disconnect on construct to avoid unneccessary calls
-//  WiFi.mode(WIFI_AP_STA);
-//  WiFi.disconnect();
-
-//  WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
 
   // AP on/off
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
@@ -114,7 +115,7 @@ WIFIMANAGER::~WIFIMANAGER() {
  * @brief If no WIFI is available, fallback to create an AP on the ESP32
  * @param state boolean true (create AP) or false (don't create an AP)
  */
-void WIFIMANAGER::fallbackToSoftAp(bool state) {
+void WIFIMANAGER::fallbackToSoftAp(const bool state) {
   createFallbackAP = state;
 }
 
@@ -132,11 +133,12 @@ bool WIFIMANAGER::getFallbackState() {
  * @details This only affects memory, not the storage!
  * @details If you wan't to persist this, you need to call writeToNVS()
  */
-void WIFIMANAGER::clearApList() {
-  for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
-    apList[i].apName = "";
-    apList[i].apPass = "";
+bool WIFIMANAGER::clearApList() {
+  if (!apList.clear()) {
+    Serial.println("Fehler beim Löschen der AP-Liste");
+    return false;
   }
+  return true;
 }
 
 /**
@@ -176,21 +178,25 @@ bool WIFIMANAGER::loadFromNVS() {
  * @return false on error with the NVS
  */
 bool WIFIMANAGER::writeToNVS() {
-  if (preferences.begin(NVS, false)) {
-    preferences.clear();
-    char tmpKey[10] = { 0 };
-    for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
-      if (!apList[i].apName.length()) continue;
-      sprintf(tmpKey, "apName%d", i);
-      preferences.putString(tmpKey, apList[i].apName);
-      sprintf(tmpKey, "apPass%d", i);
-      preferences.putString(tmpKey, apList[i].apPass);
-    }
-    preferences.end();
-    return true;
-  } 
-  Serial.println(F("[WIFI] Unable to write data to NVS, giving up..."));
-  return false;
+  if (!preferences.begin(NVS, false)) {
+    Serial.println(F("[WIFI] Unable to write data to NVS, giving up..."));
+    return false;
+  }
+
+  preferences.clear();
+  char tmpKey[10];
+  for(uint8_t i = 0; i < WIFIMANAGER_MAX_APS; i++) {
+    if (apList[i].apName.isEmpty()) continue;
+
+    snprintf(tmpKey, sizeof(tmpKey), "apName%d", i);
+    preferences.putString(tmpKey, apList[i].apName);
+
+    snprintf(tmpKey, sizeof(tmpKey), "apPass%d", i);
+    preferences.putString(tmpKey, apList[i].apPass);
+  }
+
+  preferences.end();
+  return true;
 }
 
 /**
@@ -264,7 +270,7 @@ bool WIFIMANAGER::delWifi(String apName) {
  * @return false if no configuration is available
  */
 bool WIFIMANAGER::configAvailable() {
-    return configuredSSIDs > 0;
+    return configuredSSIDs != 0;
 }
 
 /**
@@ -531,8 +537,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
 #endif
 
 #if ASYNC_WEBSERVER == true
-  webServer->on((apiPrefix + "/softap/start").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
-    [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
+  webServer->on((apiPrefix + "/softap/start").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}) {
     request->send(200, "application/json", "{\"message\":\"Soft AP stopped\"}");
 #else
   webServer->on((apiPrefix + "/softap/start").c_str(), HTTP_POST, [&]() {
@@ -544,8 +549,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
   });
   
 #if ASYNC_WEBSERVER == true
-  webServer->on((apiPrefix + "/softap/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
-    [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
+  webServer->on((apiPrefix + "/softap/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}) {
     request->send(200, "application/json", "{\"message\":\"Soft AP stopped\"}");
 #else
   webServer->on((apiPrefix + "/softap/stop").c_str(), HTTP_POST, [&]() {
@@ -557,15 +561,14 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
   });
 
 #if ASYNC_WEBSERVER == true
-  webServer->on((apiPrefix + "/client/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
-    [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
+  webServer->on((apiPrefix + "/client/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}) {
     request->send(200, "application/json", "{\"message\":\"Terminating current Wifi connection\"}");
 #else
   webServer->on((apiPrefix + "/client/stop").c_str(), HTTP_POST, [&]() {
     webServer->send(200, "application/json", "{\"message\":\"Terminating current Wifi connection\"}");
 #endif
     yield();
-    delay(250); // It's likely that this message won't go trough, but we give it a short time
+    delay(500); // It's likely that this message won't go trough, but we give it a short time
     stopClient();
   });
 

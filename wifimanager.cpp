@@ -17,7 +17,15 @@
 #include <Preferences.h>
 
 
-void logMsg(String msg) {
+/**
+ * @brief Write a message to the Serial interface
+ * @param msg The message to be written
+ *
+ * This function is a simple wrapper around Serial.print() to write a message
+ * to the serial console. It can be overwritten by a custom implementation for 
+ * enhanced logging.
+ */
+void WIFIMANAGER::logMessage(String msg) {
   Serial.print(msg);
 }
 
@@ -64,7 +72,7 @@ void WIFIMANAGER::startBackgroundTask(String softApName, String softApPass) {
   );
 
   if (taskCreated != pdPASS) {
-    Serial.println("[ERROR] WifiManager: Error creating background task");
+    logMessage("[ERROR] WifiManager: Error creating background task\n");
   }
 }
 
@@ -78,7 +86,7 @@ WIFIMANAGER::WIFIMANAGER(const char * ns) {
 
   // AP on/off
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
-    Serial.println(F("[WIFI] onEvent() AP mode started!"));
+    logMessage("[WIFI] onEvent() AP mode started!\n");
     softApRunning = true;
 #if ESP_ARDUINO_VERSION_MAJOR >= 2
     }, ARDUINO_EVENT_WIFI_AP_START); // arduino-esp32 2.0.0 and later
@@ -86,7 +94,7 @@ WIFIMANAGER::WIFIMANAGER(const char * ns) {
     }, SYSTEM_EVENT_AP_START); // arduino-esp32 1.0.6
 #endif
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
-    Serial.println(F("[WIFI] onEvent() AP mode stopped!"));
+    logMessage("[WIFI] onEvent() AP mode stopped!\n");
     softApRunning = false;
 #if ESP_ARDUINO_VERSION_MAJOR >= 2
     }, ARDUINO_EVENT_WIFI_AP_STOP); // arduino-esp32 2.0.0 and later
@@ -95,14 +103,14 @@ WIFIMANAGER::WIFIMANAGER(const char * ns) {
 #endif
   // AP client join/leave
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
-    Serial.println(F("[WIFI] onEvent() New client connected to softAP!"));
+    logMessage("[WIFI] onEvent() new client connected to softAP!\n");
 #if ESP_ARDUINO_VERSION_MAJOR >= 2
     }, ARDUINO_EVENT_WIFI_AP_STACONNECTED); // arduino-esp32 2.0.0 and later
 #else
     }, SYSTEM_EVENT_AP_STACONNECTED); // arduino-esp32 1.0.6
 #endif
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
-    Serial.println(F("[WIFI] onEvent() Client disconnected from softAP!"));
+    logMessage("[WIFI] onEvent() Client disconnected from softAP!\n");
 #if ESP_ARDUINO_VERSION_MAJOR >= 2
     }, ARDUINO_EVENT_WIFI_AP_STADISCONNECTED); // arduino-esp32 2.0.0 and later
 #else
@@ -165,7 +173,7 @@ bool WIFIMANAGER::loadFromNVS() {
         if (apName.length() > 0) {
           sprintf(tmpKey, "apPass%d", i);
           String apPass = preferences.getString(tmpKey);
-          Serial.printf("[WIFI] Load SSID '%s' to %d. slot.\n", apName.c_str(), i+1);
+          logMessage(String("[WIFI] Load SSID '") + apName + "' to " + String(i+1) + ". slot.\n");
           apList[i].apName = apName;
           apList[i].apPass = apPass;
           configuredSSIDs++;
@@ -175,7 +183,7 @@ bool WIFIMANAGER::loadFromNVS() {
     preferences.end();
     return true;
   }
-  Serial.println(F("[WIFI] Unable to load data from NVS, giving up..."));
+  logMessage("[WIFI] Unable to load data from NVS, giving up...\n");
   return false;
 }
 
@@ -186,7 +194,7 @@ bool WIFIMANAGER::loadFromNVS() {
  */
 bool WIFIMANAGER::writeToNVS() {
   if (!preferences.begin(NVS, false)) {
-    Serial.println(F("[WIFI] Unable to write data to NVS, giving up..."));
+    logMessage("[WIFI] Unable to write data to NVS, giving up...");
     return false;
   }
 
@@ -216,18 +224,18 @@ bool WIFIMANAGER::writeToNVS() {
  */
 bool WIFIMANAGER::addWifi(String apName, String apPass, bool updateNVS) {
   if(apName.length() < 1 || apName.length() > 31) {
-      Serial.println(F("[WIFI] No SSID given or ssid too long"));
-      return false;
+    logMessage("[WIFI] No SSID given or ssid too long");
+    return false;
   }
 
   if(apPass.length() > 63) {
-      Serial.println(F("[WIFI] Passphrase too long"));
-      return false;
+    logMessage("[WIFI] Passphrase too long");
+    return false;
   }
 
   for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
     if (apList[i].apName == "") {
-      Serial.printf("[WIFI] Found unused slot Nr. %d to store the new SSID '%s' credentials.\n", i, apName.c_str());
+      logMessage(String("[WIFI] Found unused slot Nr. ") + String(i) + " to store the new SSID '" + apName + "' credentials.\n");
       apList[i].apName = apName;
       apList[i].apPass = apPass;
       configuredSSIDs++;
@@ -235,7 +243,7 @@ bool WIFIMANAGER::addWifi(String apName, String apPass, bool updateNVS) {
       else return true;
     }
   }
-  Serial.println(F("[WIFI] No slot available to store SSID credentials"));
+  logMessage("[WIFI] No slot available to store SSID credentials");
   return false; // max entries reached
 }
 
@@ -290,8 +298,8 @@ uint8_t WIFIMANAGER::getApEntry() {
   for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
     if (apList[i].apName.length()) return i;
   }
-  Serial.print(F("[WIFI][ERROR] We did not find a valid entry!"));
-  Serial.print(F("[WIFI][ERROR] Make sure to not call this function if configuredSSIDs != 1."));
+  logMessage("[WIFI][ERROR] We did not find a valid entry!\n");
+  logMessage("[WIFI][ERROR] Make sure to not call this function if configuredSSIDs != 1.\n");
   return 0;
 }
 
@@ -307,35 +315,31 @@ void WIFIMANAGER::loop() {
     // Check if we are connected to a well known SSID
     for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
       if (WiFi.SSID() == apList[i].apName) {
-        Serial.printf("[WIFI][STATUS] Connected to known SSID: '%s' with IP %s.\n",
-          WiFi.SSID().c_str(),
-          WiFi.localIP().toString().c_str()
-        );
+        logMessage(String("[WIFI][STATUS] Connected to known SSID: '") + WiFi.SSID() + "' with IP " + WiFi.localIP().toString() + "\n");
         return;
       }
     }
     // looks like we are connected to something else, strange!?
-    Serial.print(F("[WIFI] We are connected to an unknown SSID ignoring. Connected to: "));
-    Serial.println(WiFi.SSID());
+    logMessage("[WIFI] We are connected to an unknown SSID ignoring. Connected to: " + WiFi.SSID() + "\n");
   } else {
     if (softApRunning) {
-      Serial.printf("[WIFI] Not trying to connect to a known SSID. SoftAP has %d clients connected!\n", WiFi.softAPgetStationNum());
+      logMessage("[WIFI] Not trying to connect to a known SSID. SoftAP has " + String(WiFi.softAPgetStationNum()) + " clients connected!\n");
     } else {
       // let's try to connect to some WiFi in Range
       if (!tryConnect()) {
         if (createFallbackAP) runSoftAP();
-        else Serial.println(F("[WIFI] Auto creation of SoftAP is disabled, no starting AP!"));
+        else logMessage("[WIFI] Auto creation of SoftAP is disabled, no starting AP!\n");
       }
     }
   }
 
   if (softApRunning && millis() - startApTimeMillis > timeoutApMillis) {
     if (WiFi.softAPgetStationNum() > 0) {
-      Serial.printf("[WIFI] SoftAP has %d clients connected!\n", WiFi.softAPgetStationNum());
+      logMessage("[WIFI] SoftAP has " + String(WiFi.softAPgetStationNum()) + " clients connected!\n");
       startApTimeMillis = millis(); // reset timeout as someone is connected
       return;
     }
-    Serial.println(F("[WIFI] Running in AP mode but timeout reached. Closing AP!"));
+    logMessage("[WIFI] Running in AP mode but timeout reached. Closing AP!\n");
     stopSoftAP();
     delay(100);
   }
@@ -349,13 +353,13 @@ void WIFIMANAGER::loop() {
  */
 bool WIFIMANAGER::tryConnect() {
   if (!configAvailable()) {
-    Serial.println(F("[WIFI] No SSIDs configured in NVS, unable to connect."));
+    logMessage("[WIFI] No SSIDs configured in NVS, unable to connect\n");
     if (createFallbackAP) runSoftAP();
     return false;
   }
 
   if (softApRunning) {
-    Serial.printf("[WIFI] Not trying to connect. SoftAP has %d clients connected!\n", WiFi.softAPgetStationNum());
+    logMessage("[WIFI] Not trying to connect. SoftAP has " + String(WiFi.softAPgetStationNum()) + " clients connected!\n");
     return false;
   }
 
@@ -367,11 +371,10 @@ bool WIFIMANAGER::tryConnect() {
     WiFi.mode(WIFI_STA);
     int8_t scanResult = WiFi.scanNetworks(false, true);
     if(scanResult <= 0) {
-      Serial.println(F("[WIFI] Unable to find WIFI networks in range to this device!"));
+      logMessage("[WIFI] Unable to find WIFI networks in range to this device!\n");
       return false;
     }
-    Serial.print(F("[WIFI] Found networks: "));
-    Serial.println(scanResult);
+    logMessage(String("[WIFI] Found ") + String(scanResult) + " networks in range\n");
     int choosenRssi = INT_MIN;  // we want to select the strongest signal with the highest priority if we have multiple SSIDs available
     for(int8_t x = 0; x < scanResult; ++x) {
       String ssid;
@@ -395,12 +398,11 @@ bool WIFIMANAGER::tryConnect() {
   }
 
   if (choosenAp == INT_MIN) {
-    Serial.println(F("[WIFI] Unable to find an SSID to connect to!"));
+    logMessage("[WIFI] Unable to find an SSID to connect to!\n");
     return false;
   } else {
-    Serial.printf("[WIFI] Trying to connect to SSID %s with password %s.\n",
-      apList[choosenAp].apName.c_str(),
-      (apList[choosenAp].apPass.length() > 0 ? "'***'" : "''")
+    logMessage(String("[WIFI] Trying to connect to SSID ") + apList[choosenAp].apName 
+      + " with password " + (apList[choosenAp].apPass.length() > 0 ? "'***'" : "''") + "\n"
     );
 
     WiFi.begin(apList[choosenAp].apName.c_str(), apList[choosenAp].apPass.c_str());
@@ -414,36 +416,35 @@ bool WIFIMANAGER::tryConnect() {
     }
     switch(status) {
       case WL_IDLE_STATUS:
-        Serial.println(F("[WIFI] Connecting failed (0): Idle"));
+        logMessage("[WIFI] Connecting failed (0): Idle\n");
         break;
       case WL_NO_SSID_AVAIL:
-        Serial.println(F("[WIFI] Connection failed (1): The AP can't be found."));
+        logMessage("[WIFI] Connecting failed (1): The AP can't be found\n");
         break;
       case WL_SCAN_COMPLETED:
-        Serial.println(F("[WIFI] Connecting failed (2): Scan completed"));
+        logMessage("[WIFI] Connecting failed (2): Scan completed\n");
         break;
       case WL_CONNECTED: // 3
-        Serial.println(F("[WIFI] Connection successful."));
-        Serial.printf("[WIFI] SSID   : %s\n", WiFi.SSID().c_str());
-        Serial.printf("[WIFI] IP     : %s\n", WiFi.localIP().toString().c_str());
-
+        logMessage("[WIFI] Connection successful\n");
+        logMessage("[WIFI] SSID   : " + WiFi.SSID() + "\n");
+        logMessage("[WIFI] IP     : " + WiFi.localIP().toString() + "\n");
         stopSoftAP();
         return true;
         break;
       case WL_CONNECT_FAILED:
-        Serial.println(F("[WIFI] Connecting failed (4): Unknown reason"));
+        logMessage("[WIFI] Connecting failed (4): Unknown reason\n");
         break;
       case WL_CONNECTION_LOST:
-        Serial.println(F("[WIFI] Connecting failed (5): Connection lost"));
+        logMessage("[WIFI] Connecting failed (5): Connection lost\n");
         break;
       case WL_DISCONNECTED:
-        Serial.println(F("[WIFI] Connecting failed (6): Disconnected"));
+        logMessage("[WIFI] Connecting failed (6): Disconnected\n");
         break;
       case WL_NO_SHIELD:
-        Serial.println(F("[WIFI] Connecting failed (255): No Wifi shield found"));
+        logMessage("[WIFI] Connecting failed (7): No Wifi shield found\n");
         break;
       default:
-        Serial.printf("[WIFI] Connecting Failed (Status: %d).\n", status);
+        logMessage("[WIFI] Connecting failed (" + String(status) + "): Unknown status code\n");
         break;
     }
   }
@@ -469,17 +470,16 @@ bool WIFIMANAGER::runSoftAP(String apName, String apPass) {
   startApTimeMillis = millis();
 
   if (this->softApName == "") this->softApName = "ESP_" + String((uint32_t)ESP.getEfuseMac());
-  Serial.printf("[WIFI] Starting configuration portal on AP SSID %s\n", this->softApName.c_str());
+  logMessage("[WIFI] Starting configuration portal on AP SSID " + this->softApName + "\n");
 
   WiFi.mode(WIFI_AP);
   bool state = WiFi.softAP(this->softApName.c_str(), (this->softApPass.length() ? this->softApPass.c_str() : NULL));
   if (state) {
     IPAddress IP = WiFi.softAPIP();
-    Serial.print(F("[WIFI] AP created. My IP is: "));
-    Serial.println(IP);
+    logMessage("[WIFI] AP created. My IP is: " + String(IP) + "\n");
     return true;
   } else {
-    Serial.println(F("[WIFI] Unable to create soft AP!"));
+    logMessage("[WIFI] Unable to create SoftAP!\n");
     return false;
   }
 }
@@ -547,7 +547,7 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
     message += "path=";
     message += webServer->arg("path");
     message += '\n';
-    Serial.print(message);
+    logMessage(message);
   });
 #endif
 

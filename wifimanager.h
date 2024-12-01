@@ -28,7 +28,7 @@
 void wifiTask(void* param);
 
 class WIFIMANAGER {
-  private:
+  protected:
 #if ASYNC_WEBSERVER == true
     AsyncWebServer * webServer;         // The Webserver to register routes on
 #else
@@ -62,7 +62,10 @@ class WIFIMANAGER {
     void clearApList();
 
     // Get id of the first non empty entry
-    uint8_t getApEntry();
+    uint8_t getApEntry()
+    
+    // Print a log message to Serial, can be overwritten
+    void logMessage(String msg);
 
   public:
     // We let the loop run as as Task

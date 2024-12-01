@@ -16,6 +16,11 @@
 #include <WiFi.h>
 #include <Preferences.h>
 
+
+void logMsg(String msg) {
+  Serial.print(msg);
+}
+
 /**
  * @brief Background Task running as a loop forever
  * @param param needs to be a valid WIFIMANAGER instance

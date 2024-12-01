@@ -9,12 +9,7 @@
  * (Attribution-NonCommercial-ShareAlike 4.0 International)
 **/
 
-#ifndef SPIFFS
-#define SPIFFS LITTLEFS
-#endif
-
 #include <Arduino.h>
-#include <LittleFS.h>
 #include "wifimanager.h"
 
 // Create a instance of the WifiManager
@@ -25,13 +20,6 @@ AsyncWebServer webServer(80);
 
 void setup() {
   Serial.begin(115200);
-
-  // Make sure we can persist the configuration into the NVS (Non Volatile Storage)
-  if (!LittleFS.begin(true)) {
-    Serial.println("[ERROR] Unable to open spiffs partition or run LittleFS");
-    ESP.deepSleep(15 * 1000 * 1000); // 15 seconds deepSleep then retry
-  }
-  // End LittleFS
 
   WifiManager.startBackgroundTask();        // Run the background task to take care of our Wifi
   WifiManager.fallbackToSoftAp(true);       // Run a SoftAP if no known AP can be reached

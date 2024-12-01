@@ -65,7 +65,7 @@ class WIFIMANAGER {
     uint8_t getApEntry();
     
     // Print a log message to Serial, can be overwritten
-    void logMessage(String msg);
+    virtual void logMessage(String msg);
 
   public:
     // We let the loop run as as Task

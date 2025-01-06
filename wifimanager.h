@@ -1,6 +1,6 @@
 /**
  * Wifi Manager
- * (c) 2022 Martin Verges
+ * (c) 2022-2025 Martin Verges
  *
  * Licensed under CC BY-NC-SA 4.0
  * (Attribution-NonCommercial-ShareAlike 4.0 International)
@@ -35,6 +35,7 @@ class WIFIMANAGER {
     WebServer * webServer;              // The Webserver to register routes on
 #endif
     String apiPrefix = "/api/wifi";     // Prefix for all IP endpionts
+    String uiPrefix = "/wifi";          // Prefix for all UI endpionts
 
     Preferences preferences;            // Used to store AP credentials to NVS
     char * NVS;                         // Name used for NVS preferences
@@ -89,6 +90,9 @@ class WIFIMANAGER {
 #else
     void attachWebServer(WebServer * srv);
 #endif
+
+    // Attach an UI
+    void attachUI();
 
     // Add another AP to the list of known WIFIs
     bool addWifi(String apName, String apPass, bool updateNVS = true);

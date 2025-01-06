@@ -3,7 +3,7 @@
  * @file basic-usage.cpp
  * @brief Short minimal example to make use of the ESP32 Wifi Manager
  * @author Martin Verges <martin@verges.cc>
- * @copyright 2022
+ * @copyright 2022-2025
  *
  * Licensed under CC BY-NC-SA 4.0
  * (Attribution-NonCommercial-ShareAlike 4.0 International)
@@ -24,6 +24,7 @@ void setup() {
   WifiManager.startBackgroundTask();        // Run the background task to take care of our Wifi
   WifiManager.fallbackToSoftAp(true);       // Run a SoftAP if no known AP can be reached
   WifiManager.attachWebServer(&webServer);  // Attach our API to the Webserver 
+  WifiManager.attachUI();                   // Attach the UI to the Webserver
  
   // Run the Webserver and add your webpages to it
   webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request){

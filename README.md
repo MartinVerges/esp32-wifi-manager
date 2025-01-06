@@ -29,12 +29,18 @@ It is only made and tested it on my ESP32 Microcontroller.
 
 ### More detailed flow diagram
 
-<img src="documentation/flow-diagram.png?raw=true" alt="Flow diagram" width="40%">
+<img src="documentation/flow-diagram.png?raw=true" alt="Flow diagram" width="40%" style="background-color: white">
 
 ## What do I need to do?
 
-If you want to use this wifi manager, you have to create your own Web UI for it!
-It won't give you a premade styled UI to configure the SSID credentials.
+If you want to use this wifi manager, you can create your own Web UI or use a prebuild one available at `/wifi`!
+
+## Build in UI
+
+The UI route is only loaded to `/wifi` if you execute `attachUI()` inside your script.
+
+<img src="documentation/ui.png?raw=true" alt="Build in UI" width="40%">
+
 
 ## APIs
 

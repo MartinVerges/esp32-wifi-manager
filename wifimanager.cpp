@@ -770,3 +770,409 @@ void WIFIMANAGER::attachWebServer(WebServer * srv) {
 #endif
   });
 }
+
+/**
+ * @brief Attach the WebServer to the WifiManager to register the RESTful API
+ * @param srv WebServer object
+ */
+void WIFIMANAGER::attachUI() {
+
+#if ASYNC_WEBSERVER == true
+  webServer->on((uiPrefix).c_str(), HTTP_GET, [](AsyncWebServerRequest* request) {
+#else
+  webServer->on((uiPrefix).c_str(), HTTP_GET, [&]() {
+#endif
+
+    String html = R"html(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 WiFi Manager</title>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-color: #1e293b;
+            --border-color: #e2e8f0;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 16px;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid var(--border-color);
+        }
+
+        h1, h2 {
+            margin: 0 0 16px 0;
+            color: var(--text-color);
+        }
+
+        .network-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .network-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .network-item:last-child {
+            border-bottom: none;
+        }
+
+        .network-item:hover {
+            background-color: var(--bg-color);
+        }
+
+        .network-info {
+            flex-grow: 1;
+        }
+
+        .network-info div {
+          float: left;
+          width: 70%;
+        }
+
+        .network-info button {
+          float: right;
+          width: 30%;
+        }
+
+        .ssid {
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .signal {
+            font-size: 0.875rem;
+            color: #64748b;
+        }
+
+        button {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status {
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 16px;
+            display: none;
+        }
+
+        .status.error {
+            background: #fee2e2;
+            color: #991b1b;
+            display: block;
+        }
+
+        .status.success {
+            background: #dcfce7;
+            color: #166534;
+            display: block;
+        }
+
+        .status.info {
+            background: #e0f2fe;
+            color: #075985;
+            display: block;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            padding: 24px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 400px;
+        }
+
+        input {
+            width: 100%;
+            padding: 8px;
+            margin: 8px 0 16px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .button-secondary {
+            background: var(--bg-color);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+
+        .saved-networks {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--border-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>ESP32 WiFi Manager</h1>
+            <div id="status"></div>
+            <button onclick="scanNetworks()">Scan for Networks</button>
+            <button onclick="showConnectModal()">Manual Connect</button>
+        </div>
+
+        <div class="card">
+            <h2>Available Networks</h2>
+            <div id="networkList" class="network-list"></div>
+        </div>
+
+        <div class="card">
+            <h2>Saved Networks</h2>
+            <div id="savedNetworks" class="network-list"></div>
+        </div>
+    </div>
+
+    <div id="connectModal" class="modal">
+        <div class="modal-content">
+            <h2>Connect to Network</h2>
+            <form id="connectForm" onsubmit="connectToNetwork(event)">
+                <label for="apName">Network Name:</label>
+                <input type="text" id="apName" required>
+                
+                <label for="apPass">Password:</label>
+                <input type="password" id="apPass" required>
+                
+                <div class="button-group">
+                    <button type="button" class="button-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit">Connect</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        let networks = {};
+
+        // Load saved networks when page loads
+        window.addEventListener('load', () => {
+            loadSavedNetworks();
+            scanNetworks();
+        });
+
+        async function loadSavedNetworks() {
+            try {
+                const response = await fetch(`${API_BASE}/wifi/configlist`);
+                if (!response.ok) throw new Error('Failed to fetch saved networks');
+                
+                const savedNetworks = await response.json();
+                displaySavedNetworks(savedNetworks);
+            } catch (error) {
+                showStatus('Failed to load saved networks: ' + error.message, 'error');
+            }
+        }
+
+        function displaySavedNetworks(networks) {
+            const networkList = document.getElementById('savedNetworks');
+            const networkArray = Object.values(networks);
+            
+            if (networkArray.length === 0) {
+                networkList.innerHTML = '<div class="network-item">No saved networks</div>';
+                return;
+            }
+
+            networkList.innerHTML = networkArray.map(network => `
+                <div class="network-item">
+                    <div class="network-info">
+                        <div class="ssid">${network.apName}</div>
+                        <button onclick="deleteNetwork('${network.id}')">delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function scanNetworks() {
+            try {
+                showStatus('Scanning for networks...', 'info');
+                const response = await fetch(`${API_BASE}/wifi/scan`);
+                if (!response.ok) throw new Error('Network scan failed');
+                
+                // Wait 5 seconds for the scan to complete
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                
+                const scanResponse = await fetch(`${API_BASE}/wifi/scan/results`);
+                if (!scanResponse.ok) throw new Error('Failed to fetch scan results');
+                
+                networks = await scanResponse.json();
+                displayNetworks(networks);
+                showStatus('Networks found', 'success');
+            } catch (error) {
+                showStatus(error.message, 'error');
+            }
+        }
+
+        function displayNetworks(networks) {
+            const networkList = document.getElementById('networkList');
+            const networkArray = Object.values(networks)
+              .filter(network => network.ssid.length > 0);
+            
+            if (networkArray.length === 0) {
+                networkList.innerHTML = '<div class="network-item">No networks found</div>';
+                return;
+            }
+
+            // Sort networks by RSSI
+            networkArray.sort((a, b) => b.rssi - a.rssi);
+
+            networkList.innerHTML = networkArray
+                .map(network => `
+                    <div class="network-item" onclick="showConnectModal('${network.ssid}')">
+                        <div class="network-info">
+                            <div class="ssid">${network.ssid}</div>
+                            <div class="signal">
+                                Signal: ${getSignalStrength(network.rssi)}
+                                ${network.encryptionType > 0 ? '🔒' : ''}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+        }
+
+        function getSignalStrength(rssi) {
+            if (rssi >= -50) return 'Excellent';
+            if (rssi >= -60) return 'Very Good';
+            if (rssi >= -70) return 'Good';
+            if (rssi >= -80) return 'Fair';
+            return 'Poor';
+        }
+
+        function showConnectModal(apName = '') {
+            document.getElementById('apName').value = apName;
+            document.getElementById('apName').readOnly = !!apName;
+            document.getElementById('apPass').value = '';
+            document.getElementById('connectModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('connectModal').style.display = 'none';
+        }
+
+        async function deleteNetwork(deleteId) {
+            try {
+                const response = await fetch(`${API_BASE}/wifi/id`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ id: deleteId }),
+                });
+                
+                if (!response.ok) throw new Error('Failed to delete network');
+                
+                showStatus('Network deleted successfully', 'success');
+                await loadSavedNetworks(); // Refresh the list
+            } catch (error) {
+                showStatus('Failed to delete network: ' + error.message, 'error');
+            }
+        }
+
+        async function connectToNetwork(event) {
+            event.preventDefault();
+            const apName = document.getElementById('apName').value;
+            const apPass = document.getElementById('apPass').value;
+
+            try {
+                showStatus('Connecting to network...', 'info');
+                const response = await fetch(`${API_BASE}/wifi/add`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ apName, apPass }),
+                });
+
+                if (!response.ok) throw new Error('Connection failed');
+
+                closeModal();
+                showStatus('Successfully connected!', 'success');
+                
+                // Refresh saved networks list
+                await loadSavedNetworks();
+            } catch (error) {
+                showStatus(error.message, 'error');
+            }
+        }
+
+        function showStatus(message, type) {
+            const statusElement = document.getElementById('status');
+            statusElement.innerHTML = message;
+            statusElement.className = `status ${type}`;
+        }
+    </script>
+</body>
+</html>
+)html";
+
+#if ASYNC_WEBSERVER == true
+    request->send(200, "text/html", html);
+#else
+    webServer->send(200, "text/html", html);
+#endif
+
+  });
+}

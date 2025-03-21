@@ -88,34 +88,25 @@ WIFIMANAGER::WIFIMANAGER(const char * ns) {
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
     logMessage("[WIFI] onEvent() AP mode started!\n");
     softApRunning = true;
-#if ESP_ARDUINO_VERSION_MAJOR >= 2
-    }, ARDUINO_EVENT_WIFI_AP_START); // arduino-esp32 2.0.0 and later
-#else
-    }, SYSTEM_EVENT_AP_START); // arduino-esp32 1.0.6
-#endif
+    }, ARDUINO_EVENT_WIFI_AP_START
+  );
+
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
     logMessage("[WIFI] onEvent() AP mode stopped!\n");
     softApRunning = false;
-#if ESP_ARDUINO_VERSION_MAJOR >= 2
-    }, ARDUINO_EVENT_WIFI_AP_STOP); // arduino-esp32 2.0.0 and later
-#else
-    }, SYSTEM_EVENT_AP_STOP); // arduino-esp32 1.0.6
-#endif
+    }, ARDUINO_EVENT_WIFI_AP_STOP
+  );
+
   // AP client join/leave
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
     logMessage("[WIFI] onEvent() new client connected to softAP!\n");
-#if ESP_ARDUINO_VERSION_MAJOR >= 2
-    }, ARDUINO_EVENT_WIFI_AP_STACONNECTED); // arduino-esp32 2.0.0 and later
-#else
-    }, SYSTEM_EVENT_AP_STACONNECTED); // arduino-esp32 1.0.6
-#endif
+    }, ARDUINO_EVENT_WIFI_AP_STACONNECTED
+  );
+
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
     logMessage("[WIFI] onEvent() Client disconnected from softAP!\n");
-#if ESP_ARDUINO_VERSION_MAJOR >= 2
-    }, ARDUINO_EVENT_WIFI_AP_STADISCONNECTED); // arduino-esp32 2.0.0 and later
-#else
-    }, SYSTEM_EVENT_AP_STADISCONNECTED); // arduino-esp32 1.0.6
-#endif
+    }, ARDUINO_EVENT_WIFI_AP_STADISCONNECTED
+  );
 }
 
 /**

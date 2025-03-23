@@ -15,7 +15,9 @@
 #endif
 #include <WiFi.h>
 #include <Preferences.h>
+#include <DNSServer.h>
 
+DNSServer dnsServer;
 
 /**
  * @brief Write a message to the Serial interface
@@ -43,6 +45,7 @@ void wifiTask(void* param) {
   for(;;) {
     yield();
     wifimanager->loop();
+    dnsServer.processNextRequest();
     yield();
     vTaskDelay(xDelay);
   }
@@ -467,6 +470,7 @@ bool WIFIMANAGER::runSoftAP(String apName, String apPass) {
   bool state = WiFi.softAP(this->softApName.c_str(), (this->softApPass.length() ? this->softApPass.c_str() : NULL));
   if (state) {
     IPAddress IP = WiFi.softAPIP();
+    dnsServer.start(53, "*", IP);
     logMessage("[WIFI] AP created. My IP is: " + String(IP) + "\n");
     return true;
   } else {
@@ -479,6 +483,7 @@ bool WIFIMANAGER::runSoftAP(String apName, String apPass) {
  * @brief Stop/Disconnect a current running SoftAP
  */
 void WIFIMANAGER::stopSoftAP() {
+  dnsServer.stop();
   WiFi.softAPdisconnect();
   WiFi.mode(WIFI_STA);
 }

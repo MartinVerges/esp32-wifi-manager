@@ -1110,7 +1110,7 @@ void WIFIMANAGER::attachUI() {
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ id: deleteId }),
+                    body: JSON.stringify({ id: parseInt(deleteId, 10) }),
                 });
                 
                 if (!response.ok) throw new Error('Failed to delete network');

@@ -12,28 +12,16 @@
 #define WIFIMANAGER_MAX_APS 4   // Valid range is uint8_t
 #endif
 
-#ifndef ASYNC_WEBSERVER
-  #define ASYNC_WEBSERVER true
-#endif
-
 #include <Arduino.h>
 #include <Preferences.h>
-#if ASYNC_WEBSERVER == true
-  #include <ESPAsyncWebServer.h>
-#else
-  #include <WebServer.h>
-#endif
-
+#include <ESPAsyncWebServer.h>
 
 void wifiTask(void* param);
 
 class WIFIMANAGER {
   protected:
-#if ASYNC_WEBSERVER == true
     AsyncWebServer * webServer;         // The Webserver to register routes on
-#else
-    WebServer * webServer;              // The Webserver to register routes on
-#endif
+
     String apiPrefix = "/api/wifi";     // Prefix for all IP endpionts
     String uiPrefix = "/wifi";          // Prefix for all UI endpionts
 
@@ -85,11 +73,7 @@ class WIFIMANAGER {
     void startBackgroundTask(String apName = "", String apPass = "");
 
     // Attach a webserver and register api routes
-#if ASYNC_WEBSERVER == true
     void attachWebServer(AsyncWebServer * srv);
-#else
-    void attachWebServer(WebServer * srv);
-#endif
 
     // Attach an UI
     void attachUI();

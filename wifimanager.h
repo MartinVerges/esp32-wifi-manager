@@ -19,6 +19,15 @@
 void wifiTask(void* param);
 
 class WIFIMANAGER {
+  private:
+  AsyncCallbackWebHandler* uiWebHandlers[1];
+  uint8_t uiWebHandlerCount = 0;
+  AsyncCallbackWebHandler* apiWebHandlers[9];
+  uint8_t apiWebHandlerCount = 0;
+  AsyncCallbackWebHandler* captivePortalWebHandlers[2];
+  uint8_t captivePortalWebHandlerCount = 0;
+  AsyncWebHandler* captivePortalCatchAllHandler = NULL;
+
   protected:
     AsyncWebServer * webServer;         // The Webserver to register routes on
 
@@ -56,6 +65,9 @@ class WIFIMANAGER {
     // Print a log message to Serial, can be overwritten
     virtual void logMessage(String msg);
 
+    void attachCaptivePortal();
+    void detachCaptivePortal();
+
   public:
     // We let the loop run as as Task
     TaskHandle_t WifiCheckTask;
@@ -75,8 +87,14 @@ class WIFIMANAGER {
     // Attach a webserver and register api routes
     void attachWebServer(AsyncWebServer * srv);
 
-    // Attach an UI
+    // Detach the webserver and delete all routes
+    void detachWebServer();
+
+    // Attach the optional UI
     void attachUI();
+
+    // Detach the optional UI
+    void detachUI();
 
     // Add another AP to the list of known WIFIs
     bool addWifi(String apName, String apPass, bool updateNVS = true);

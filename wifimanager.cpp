@@ -530,6 +530,47 @@ void WIFIMANAGER::stopWifi(bool killTask) {
   stopClient();
 }
 
+void WIFIMANAGER::attachCaptivePortal() {
+  captivePortalWebHandlers[captivePortalWebHandlerCount++] = &webServer->on("/index.htm", HTTP_POST, [&](AsyncWebServerRequest * request) {
+    request->redirect(uiPrefix);
+  });
+  captivePortalWebHandlers[captivePortalWebHandlerCount++] = &webServer->on("/connecttest.txt", HTTP_POST, [&](AsyncWebServerRequest * request) {
+    request->redirect(uiPrefix);
+    // "http://logout.net/" for windows11?
+  });
+  webServer->onNotFound([&](AsyncWebServerRequest *request) {
+    if (request->url().endsWith(String(F("favicon.ico")))) {
+      request->send(404, "text/plain", "Not found");
+    } else {
+      request->redirect(uiPrefix);
+    }
+  });
+}
+
+void WIFIMANAGER::detachCaptivePortal() {
+  for (int i = 0; i < captivePortalWebHandlerCount; i++) {
+    logMessage("[WIFI] Removing WebServer handler: DNS#" + String(i) + "\n");
+    webServer->removeHandler(captivePortalWebHandlers[i]);
+  }
+  captivePortalWebHandlerCount = 0;  
+}
+
+/**
+ * @brief Remove all registered WebServer handlers for API, UI and DNS
+ * @details This is used to detach the WebServer from the WifiManager
+ *          when the WifiManager is deleted
+ */
+void WIFIMANAGER::detachWebServer() {
+  for (int i = 0; i < apiWebHandlerCount; i++) {
+    logMessage("[WIFI] Removing WebServer handler: API#" + String(i) + "\n");
+    webServer->removeHandler(apiWebHandlers[i]);
+  }
+  apiWebHandlerCount = 0;
+
+  detachUI();
+  detachCaptivePortal();
+}
+
 /**
  * @brief Attach the WebServer to the WifiManager to register the RESTful API
  * @param srv WebServer object
@@ -537,28 +578,28 @@ void WIFIMANAGER::stopWifi(bool killTask) {
 void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
   webServer = srv; // store it in the class for later use
 
-  webServer->on((apiPrefix + "/softap/start").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request) {
+  apiWebHandlers[apiWebHandlerCount++] = &webServer->on((apiPrefix + "/softap/start").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request) {
     request->send(200, "application/json", "{\"message\":\"Soft AP stopped\"}");
     yield();
     delay(250);
     runSoftAP();
   });
   
-  webServer->on((apiPrefix + "/softap/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request) {
+  apiWebHandlers[apiWebHandlerCount++] = &webServer->on((apiPrefix + "/softap/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request) {
     request->send(200, "application/json", "{\"message\":\"Soft AP stopped\"}");
     yield();
     delay(250); // It's likely that this message won't go trough, but we give it a short time
     stopSoftAP();
   });
 
-  webServer->on((apiPrefix + "/client/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request) {
+  apiWebHandlers[apiWebHandlerCount++] = &webServer->on((apiPrefix + "/client/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request) {
     request->send(200, "application/json", "{\"message\":\"Terminating current Wifi connection\"}");
     yield();
     delay(500); // It's likely that this message won't go trough, but we give it a short time
     stopClient();
   });
 
-  webServer->on((apiPrefix + "/add").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
+  apiWebHandlers[apiWebHandlerCount++] = &webServer->on((apiPrefix + "/add").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
     JsonDocument jsonBuffer;
     deserializeJson(jsonBuffer, (const char*)data);
@@ -572,7 +613,7 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
     } else resp->send(200, "application/json", "{\"message\":\"New AP added\"}");
   });
 
-  webServer->on((apiPrefix + "/id").c_str(), HTTP_DELETE, [&](AsyncWebServerRequest * request){}, NULL,
+  apiWebHandlers[apiWebHandlerCount++] = &webServer->on((apiPrefix + "/id").c_str(), HTTP_DELETE, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
     JsonDocument jsonBuffer;
     deserializeJson(jsonBuffer, (const char*)data);
@@ -586,7 +627,7 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
     } else resp->send(200, "application/json", "{\"message\":\"AP deleted\"}");
   });
 
-  webServer->on((apiPrefix + "/apName").c_str(), HTTP_DELETE, [&](AsyncWebServerRequest * request){}, NULL,
+  apiWebHandlers[apiWebHandlerCount++] = &webServer->on((apiPrefix + "/apName").c_str(), HTTP_DELETE, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
     JsonDocument jsonBuffer;
     deserializeJson(jsonBuffer, (const char*)data);
@@ -600,7 +641,7 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
     } else resp->send(200, "application/json", "{\"message\":\"AP deleted\"}");
   });
 
-  webServer->on((apiPrefix + "/configlist").c_str(), HTTP_GET, [&](AsyncWebServerRequest *request) {
+  apiWebHandlers[apiWebHandlerCount++] = &webServer->on((apiPrefix + "/configlist").c_str(), HTTP_GET, [&](AsyncWebServerRequest *request) {
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     JsonDocument jsonDoc;
     auto jsonArray = jsonDoc.to<JsonArray>();
@@ -618,7 +659,7 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
     request->send(response);
   });
 
-  webServer->on((apiPrefix + "/scan").c_str(), HTTP_GET, [&](AsyncWebServerRequest *request) {
+  apiWebHandlers[apiWebHandlerCount++] = &webServer->on((apiPrefix + "/scan").c_str(), HTTP_GET, [&](AsyncWebServerRequest *request) {
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     JsonDocument jsonDoc;
 
@@ -652,7 +693,7 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
     request->send(response);
   });
 
-  webServer->on((apiPrefix + "/status").c_str(), HTTP_GET, [&](AsyncWebServerRequest *request) {
+  apiWebHandlers[apiWebHandlerCount++] = &webServer->on((apiPrefix + "/status").c_str(), HTTP_GET, [&](AsyncWebServerRequest *request) {
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     JsonDocument jsonDoc;
 
@@ -680,11 +721,24 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
 }
 
 /**
+ * @brief Detach all UI web handlers from the web server
+ * @details Iterates through the list of UI web handlers, removes each one from the web server,
+ * and resets the count of UI web handlers to zero.
+ */
+void WIFIMANAGER::detachUI() {
+  for (int i = 0; i < uiWebHandlerCount; i++) {
+    logMessage("[WIFI] Removing WebServer handler: UI#" + String(i) + "\n");
+    webServer->removeHandler(uiWebHandlers[i]);
+  }
+  uiWebHandlerCount = 0;
+}
+
+/**
  * @brief Attach the WebServer to the WifiManager to register the RESTful API
  * @param srv WebServer object
  */
 void WIFIMANAGER::attachUI() {
-  webServer->on((uiPrefix).c_str(), HTTP_GET, [](AsyncWebServerRequest* request) {
+  uiWebHandlers[uiWebHandlerCount++] = &webServer->on((uiPrefix).c_str(), HTTP_GET, [](AsyncWebServerRequest* request) {
     String html = R"html(
 <!DOCTYPE html>
 <html lang="en">

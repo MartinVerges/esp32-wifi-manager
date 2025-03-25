@@ -41,6 +41,19 @@ void wifiTask(void* param) {
   for(;;) {
     yield();
     wifimanager->loop();
+    yield();
+    vTaskDelay(xDelay);
+  }
+}
+void dnsTask(void* param) {
+  yield();
+  delay(500); // wait a short time until everything is setup before executing the loop forever
+  yield();
+  const TickType_t xDelay = 1 / portTICK_PERIOD_MS;
+  WIFIMANAGER * wifimanager = (WIFIMANAGER *) param;
+
+  for(;;) {
+    yield();
     dnsServer.processNextRequest();
     yield();
     vTaskDelay(xDelay);
@@ -73,6 +86,16 @@ void WIFIMANAGER::startBackgroundTask(String softApName, String softApPass) {
   if (taskCreated != pdPASS) {
     logMessage("[ERROR] WifiManager: Error creating background task\n");
   }
+
+  xTaskCreatePinnedToCore(
+    dnsTask,
+    "WifiManagerDNS",
+    4096,   // Stack size in words
+    this,   // Task input parameter
+    1,      // Priority of the task
+    &WifiCheckTask,  // Task handle.
+    0       // Core where the task should run
+  );
 }
 
 /**
@@ -466,8 +489,14 @@ bool WIFIMANAGER::runSoftAP(String apName, String apPass) {
   bool state = WiFi.softAP(this->softApName.c_str(), (this->softApPass.length() ? this->softApPass.c_str() : NULL));
   if (state) {
     IPAddress IP = WiFi.softAPIP();
+    char ipString[16]; // Genug Platz für "xxx.xxx.xxx.xxx\0"
+    sprintf(ipString, "%d.%d.%d.%d", IP[0], IP[1], IP[2], IP[3]);
+
+    dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+    dnsServer.setTTL(300);
     dnsServer.start(53, "*", IP);
-    logMessage("[WIFI] AP created. My IP is: " + String(IP) + "\n");
+
+    logMessage("[WIFI] AP created. My IP is: " + String(ipString) + "\n");
     return true;
   } else {
     logMessage("[WIFI] Unable to create SoftAP!\n");
@@ -480,7 +509,7 @@ bool WIFIMANAGER::runSoftAP(String apName, String apPass) {
  */
 void WIFIMANAGER::stopSoftAP() {
   dnsServer.stop();
-  WiFi.softAPdisconnect();
+  // WiFi.softAPdisconnect(); not required as mode(WIFI_STA) will stop the softAP
   WiFi.mode(WIFI_STA);
 }
 

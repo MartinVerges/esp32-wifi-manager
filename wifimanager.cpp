@@ -486,6 +486,32 @@ bool WIFIMANAGER::runSoftAP(String apName, String apPass) {
   logMessage("[WIFI] Starting configuration portal on AP SSID " + this->softApName + "\n");
 
   WiFi.mode(WIFI_AP);
+
+  /* Requires IDF >= 5.4
+  const char* captivePortalUrl = "http://192.168.4.1/portal";
+  // --- Configure DHCP Option 114 ---
+  // Stop the DHCP server on the AP interface
+  tcpip_adapter_dhcps_stop(TCPIP_ADAPTER_IF_AP);
+  // Set Option 114 (Captive Portal URL)
+  tcpip_adapter_dhcp_option_mode_t opt_info;
+  opt_info.ip = 0; // Not used for vendor specific options like 114
+  esp_err_t result = tcpip_adapter_dhcps_option(
+    ESP_NETIF_OP_SET,          // Operation: SET the option
+    TCPIP_ADAPTER_IF_AP,             // Option ID: 114 (Captive Portal)
+    114,                       // Option ID: 114 (Captive Portal)
+    (void*)captivePortalUrl,   // Option Value: Pointer to the URL string
+    strlen(captivePortalUrl)   // Option Length: Length of the URL string
+  );
+  if (result == ESP_OK) {
+    Serial.println("Successfully set DHCP Option 114.");
+  } else {
+      Serial.printf("Failed to set DHCP Option 114, error: %d\n", result);
+  }
+  // Start the DHCP server again on the AP interface
+  tcpip_adapter_dhcps_start(TCPIP_ADAPTER_IF_AP);
+  // --- End DHCP Option Configuration ---
+*/
+
   bool state = WiFi.softAP(this->softApName.c_str(), (this->softApPass.length() ? this->softApPass.c_str() : NULL));
   if (state) {
     IPAddress IP = WiFi.softAPIP();
@@ -495,6 +521,7 @@ bool WIFIMANAGER::runSoftAP(String apName, String apPass) {
     dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
     dnsServer.setTTL(300);
     dnsServer.start(53, "*", IP);
+    attachCaptivePortal();
 
     logMessage("[WIFI] AP created. My IP is: " + String(ipString) + "\n");
     return true;
@@ -509,6 +536,7 @@ bool WIFIMANAGER::runSoftAP(String apName, String apPass) {
  */
 void WIFIMANAGER::stopSoftAP() {
   dnsServer.stop();
+  detachCaptivePortal();
   // WiFi.softAPdisconnect(); not required as mode(WIFI_STA) will stop the softAP
   WiFi.mode(WIFI_STA);
 }
@@ -531,20 +559,33 @@ void WIFIMANAGER::stopWifi(bool killTask) {
 }
 
 void WIFIMANAGER::attachCaptivePortal() {
-  captivePortalWebHandlers[captivePortalWebHandlerCount++] = &webServer->on("/index.htm", HTTP_POST, [&](AsyncWebServerRequest * request) {
-    request->redirect(uiPrefix);
+  /*captivePortalWebHandlers[captivePortalWebHandlerCount++] = webServer->on("/index.htm", HTTP_GET, [&](AsyncWebServerRequest * request) {
+    logMessage("[WIFI][INFO] Captive portal requested on /index.html\n");
+    request->redirect(uiPrefix.c_str());
   });
-  captivePortalWebHandlers[captivePortalWebHandlerCount++] = &webServer->on("/connecttest.txt", HTTP_POST, [&](AsyncWebServerRequest * request) {
-    request->redirect(uiPrefix);
-    // "http://logout.net/" for windows11?
+  captivePortalWebHandlers[captivePortalWebHandlerCount++] = webServer->on("/generate_204", HTTP_GET, [&](AsyncWebServerRequest * request) {
+    logMessage("[WIFI][INFO] Captive portal requested on /generate_204\n");
+    request->redirect(uiPrefix.c_str());
   });
-  webServer->onNotFound([&](AsyncWebServerRequest *request) {
-    if (request->url().endsWith(String(F("favicon.ico")))) {
+  captivePortalWebHandlers[captivePortalWebHandlerCount++] = webServer->on("/success.txt", HTTP_GET, [&](AsyncWebServerRequest * request) {
+    logMessage("[WIFI][INFO] Captive portal requested on /success.txt\n");
+    request->redirect(uiPrefix.c_str());
+  });
+  captivePortalWebHandlers[captivePortalWebHandlerCount++] = webServer->on("/connecttest.txt", HTTP_GET, [&](AsyncWebServerRequest * request) {
+    logMessage("[WIFI][INFO] Captive portal requested on /connecttest.txt\n");
+    request->redirect(uiPrefix.c_str());
+  });
+
+  webServer->onNotFound([](AsyncWebServerRequest *request) {
+    Serial.print("inside onNotFound\n");
+    
+    if (request->url().endsWith("favicon.ico")) {
       request->send(404, "text/plain", "Not found");
     } else {
-      request->redirect(uiPrefix);
+      Serial.print("[WIFI][INFO] Captive portal requested on " + request->url() + "\n");
+      request->redirect("/wifi");
     }
-  });
+  });*/
 }
 
 void WIFIMANAGER::detachCaptivePortal() {

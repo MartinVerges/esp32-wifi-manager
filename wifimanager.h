@@ -20,13 +20,12 @@ void wifiTask(void* param);
 
 class WIFIMANAGER {
   private:
-  AsyncCallbackWebHandler* uiWebHandlers[1];
-  uint8_t uiWebHandlerCount = 0;
-  AsyncCallbackWebHandler* apiWebHandlers[9];
-  uint8_t apiWebHandlerCount = 0;
-  AsyncCallbackWebHandler* captivePortalWebHandlers[2];
-  uint8_t captivePortalWebHandlerCount = 0;
-  AsyncWebHandler* captivePortalCatchAllHandler = NULL;
+    AsyncCallbackWebHandler * uiWebHandlers[2];
+    uint8_t uiWebHandlerCount = 0;
+    AsyncCallbackWebHandler * apiWebHandlers[10];
+    uint8_t apiWebHandlerCount = 0;
+    AsyncCallbackWebHandler * captivePortalWebHandlers[5];
+    uint8_t captivePortalWebHandlerCount = 0;
 
   protected:
     AsyncWebServer * webServer;         // The Webserver to register routes on

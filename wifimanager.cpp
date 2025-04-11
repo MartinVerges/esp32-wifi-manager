@@ -369,7 +369,7 @@ bool WIFIMANAGER::tryConnect() {
     return false;
   }
 
-  if (WiFi.softAPIP() == IPAddress(0,0,0,0)) {
+  if (WiFi.softAPIP() != IPAddress(0,0,0,0)) {
     logMessage("[WIFI] SoftAP running with " + String(WiFi.softAPgetStationNum()) + " client(s) connected.\n");
   }
 
@@ -476,7 +476,7 @@ bool WIFIMANAGER::runSoftAP(String apName, String apPass) {
   if (apName.length()) this->softApName = apName;
   if (apPass.length()) this->softApPass = apPass;
 
-  if (WiFi.softAPIP() != IPAddress(0,0,0,0)) return true;
+  if (WiFi.softAPIP() != IPAddress(0,0,0,0)) return true; // already running
   startApTimeMillis = millis();
 
   if (this->softApName == "") this->softApName = "ESP_" + String((uint32_t)ESP.getEfuseMac());

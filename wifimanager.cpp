@@ -50,7 +50,6 @@ void dnsTask(void* param) {
   delay(500); // wait a short time until everything is setup before executing the loop forever
   yield();
   const TickType_t xDelay = 1 / portTICK_PERIOD_MS;
-  WIFIMANAGER * wifimanager = (WIFIMANAGER *) param;
 
   for(;;) {
     yield();
@@ -688,7 +687,7 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
     auto jsonArray = jsonDoc.to<JsonArray>();
     for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
       if (apList[i].apName.length() > 0) {
-        JsonObject wifiNet = jsonArray.createNestedObject();
+        JsonObject wifiNet = jsonArray.add<JsonObject>();
         wifiNet["id"] = i;
         wifiNet["apName"] = apList[i].apName;
         wifiNet["apPass"] = apList[i].apPass.length() > 0 ? true : false;
@@ -719,7 +718,7 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
       for (int8_t i = 0; i < scanResult; i++) {
         WiFi.getNetworkInfo(i, ssid, encryptionType, rssi, bssid, channel);
 
-        JsonObject wifiNet = jsonDoc.createNestedObject();
+        JsonObject wifiNet = jsonDoc.add<JsonObject>();
         wifiNet["ssid"] = ssid;
         wifiNet["encryptionType"] = encryptionType;
         wifiNet["rssi"] = rssi;
@@ -1063,31 +1062,71 @@ void WIFIMANAGER::attachUI() {
             }
         }
 
-        function displayNetworks(networks) {
-            const networkList = document.getElementById('networkList');
-            const networkArray = Object.values(networks)
-              .filter(network => network.ssid.length > 0);
-            
-            if (networkArray.length === 0) {
-                networkList.innerHTML = '<div class="network-item">No networks found</div>';
-                return;
-            }
+        async function scanNetworks() {
+          const MAX_RETRIES = 6; // 30 seconds / 5 seconds per retry
+          let retryCount = 0;
+          let networks = [];
 
-            // Sort networks by RSSI
-            networkArray.sort((a, b) => b.rssi - a.rssi);
+          showStatus('Scanning for networks...', 'info');
 
-            networkList.innerHTML = networkArray
-                .map(network => `
-                    <div class="network-item" onclick="showConnectModal('${network.ssid}')">
-                        <div class="network-info">
-                            <div class="ssid">${network.ssid}</div>
-                            <div class="signal">
-                                Signal: ${getSignalStrength(network.rssi)}
-                                ${network.encryptionType > 0 ? '🔒' : ''}
-                            </div>
-                        </div>
-                    </div>
-                `).join('');
+          while (retryCount < MAX_RETRIES) {
+              try {
+                  const response = await fetch(`${API_BASE}/wifi/scan`);
+                  if (!response.ok) {
+                      throw new Error(`Network scan request failed with status: ${response.status}`);
+                  }
+
+                  const data = await response.json();
+
+                  if (Array.isArray(data)) {
+                      networks = data;
+                      displayNetworks(networks);
+                      showStatus('Networks found', 'success');
+                      return; // Exit the function on success
+                  } else if (data && data.status === 'scanning') {
+                      showStatus('Scanning in progress...', 'info');
+                      await new Promise(resolve => setTimeout(resolve, 5000));
+                      retryCount++;
+                  } else {
+                      throw new Error('Unexpected response format');
+                  }
+              } catch (error) {
+                  showStatus(`Error during scan: ${error.message}`, 'error');
+                  await new Promise(resolve => setTimeout(resolve, 5000));
+                  retryCount++;
+              }
+          }
+
+          // Timeout reached, return an empty list
+          displayNetworks([]);
+          showStatus('Scan timed out, no networks found.', 'warning');
+      }
+
+      function displayNetworks(networks) {
+        const networkList = document.getElementById('networkList');
+        const networkArray = Object.values(networks)
+          .filter(network => network.ssid.length > 0);
+        
+        if (networkArray.length === 0) {
+          networkList.innerHTML = '<div class="network-item">No networks found</div>';
+          return;
+        }
+
+        // Sort networks by RSSI
+        networkArray.sort((a, b) => b.rssi - a.rssi);
+
+        networkList.innerHTML = networkArray
+          .map(network => `
+            <div class="network-item" onclick="showConnectModal('${network.ssid}')">
+              <div class="network-info">
+                <div class="ssid">${network.ssid}</div>
+                <div class="signal">
+                    Signal: ${getSignalStrength(network.rssi)}
+                    ${network.encryptionType > 0 ? '🔒' : ''}
+                </div>
+              </div>
+            </div>
+          `).join('');
         }
 
         function getSignalStrength(rssi) {

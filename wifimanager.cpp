@@ -108,13 +108,11 @@ WIFIMANAGER::WIFIMANAGER(const char * ns) {
   // AP on/off
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
     logMessage("[WIFI] onEvent() AP mode started!\n");
-    softApRunning = true;
     }, ARDUINO_EVENT_WIFI_AP_START
   );
 
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
     logMessage("[WIFI] onEvent() AP mode stopped!\n");
-    softApRunning = false;
     }, ARDUINO_EVENT_WIFI_AP_STOP
   );
 
@@ -332,26 +330,27 @@ void WIFIMANAGER::loop() {
       }
     }
     // looks like we are connected to something else, strange!?
-    logMessage("[WIFI] We are connected to an unknown SSID ignoring. Connected to: " + WiFi.SSID() + "\n");
+    logMessage("[WIFI] Connected to an unknown SSID, ignoring. Currently connected to: " + WiFi.SSID() + "\n");
   } else {
-    if (softApRunning) {
-      logMessage("[WIFI] Not trying to connect to a known SSID. SoftAP has " + String(WiFi.softAPgetStationNum()) + " clients connected!\n");
+    if (WiFi.softAPIP() != IPAddress(0,0,0,0)) {
+      logMessage("[WIFI] Operating in softAP mode with " + String(WiFi.softAPgetStationNum()) + " client(s). Skipping connection attempt to stored SSID.\n");
+
     } else {
-      // let's try to connect to some WiFi in Range
+      // let's try to connect to some WiFi in Rangef
       if (!tryConnect()) {
         if (createFallbackAP) runSoftAP();
-        else logMessage("[WIFI] Auto creation of SoftAP is disabled, no starting AP!\n");
+        else logMessage("[WIFI] Auto creation of softAP is disabled. SoftAP won't start.\n");
       }
     }
   }
 
-  if (softApRunning && millis() - startApTimeMillis > timeoutApMillis) {
+  if (WiFi.softAPIP() != IPAddress(0,0,0,0) && millis() - startApTimeMillis > timeoutApMillis) {
     if (WiFi.softAPgetStationNum() > 0) {
       logMessage("[WIFI] SoftAP has " + String(WiFi.softAPgetStationNum()) + " clients connected!\n");
       startApTimeMillis = millis(); // reset timeout as someone is connected
       return;
     }
-    logMessage("[WIFI] Running in AP mode but timeout reached. Closing AP!\n");
+    logMessage("[WIFI] Running in softAP mode but timeout reached. Closing softAP!\n");
     stopSoftAP();
     delay(100);
   }
@@ -365,14 +364,13 @@ void WIFIMANAGER::loop() {
  */
 bool WIFIMANAGER::tryConnect() {
   if (!configAvailable()) {
-    logMessage("[WIFI] No SSIDs configured in NVS, unable to connect\n");
+    logMessage("[WIFI] No SSIDs configured in NVS, unable to connect.\n");
     if (createFallbackAP) runSoftAP();
     return false;
   }
 
-  if (softApRunning) {
-    logMessage("[WIFI] Not trying to connect. SoftAP has " + String(WiFi.softAPgetStationNum()) + " clients connected!\n");
-    return false;
+  if (WiFi.softAPIP() == IPAddress(0,0,0,0)) {
+    logMessage("[WIFI] SoftAP running with " + String(WiFi.softAPgetStationNum()) + " client(s) connected.\n");
   }
 
   int choosenAp = INT_MIN;
@@ -380,7 +378,7 @@ bool WIFIMANAGER::tryConnect() {
     // only one configured SSID, skip scanning and try to connect to this specific one.
     choosenAp = getApEntry();
   } else {
-    WiFi.mode(WIFI_STA);
+    WiFi.mode(WIFI_AP_STA);
     int8_t scanResult = WiFi.scanNetworks(false, true);
     if(scanResult <= 0) {
       logMessage("[WIFI] Unable to find WIFI networks in range to this device!\n");
@@ -478,13 +476,13 @@ bool WIFIMANAGER::runSoftAP(String apName, String apPass) {
   if (apName.length()) this->softApName = apName;
   if (apPass.length()) this->softApPass = apPass;
 
-  if (softApRunning) return true;
+  if (WiFi.softAPIP() != IPAddress(0,0,0,0)) return true;
   startApTimeMillis = millis();
 
   if (this->softApName == "") this->softApName = "ESP_" + String((uint32_t)ESP.getEfuseMac());
   logMessage("[WIFI] Starting configuration portal on AP SSID " + this->softApName + "\n");
 
-  WiFi.mode(WIFI_AP);
+  WiFi.mode(WIFI_AP_STA);
 
   /* Requires IDF >= 5.4
   const char* captivePortalUrl = "http://192.168.4.1/portal";
@@ -525,7 +523,7 @@ bool WIFIMANAGER::runSoftAP(String apName, String apPass) {
     logMessage("[WIFI] AP created. My IP is: " + String(ipString) + "\n");
     return true;
   } else {
-    logMessage("[WIFI] Unable to create SoftAP!\n");
+    logMessage("[WIFI] Unable to create softAP!\n");
     return false;
   }
 }
@@ -536,8 +534,7 @@ bool WIFIMANAGER::runSoftAP(String apName, String apPass) {
 void WIFIMANAGER::stopSoftAP() {
   dnsServer.stop();
   detachCaptivePortal();
-  // WiFi.softAPdisconnect(); not required as mode(WIFI_STA) will stop the softAP
-  WiFi.mode(WIFI_STA);
+  WiFi.softAPdisconnect(true);
 }
 
 /**
@@ -1040,26 +1037,6 @@ void WIFIMANAGER::attachUI() {
                     </div>
                 </div>
             `).join('');
-        }
-
-        async function scanNetworks() {
-            try {
-                showStatus('Scanning for networks...', 'info');
-                const response = await fetch(`${API_BASE}/wifi/scan`);
-                if (!response.ok) throw new Error('Network scan failed');
-                
-                // Wait 5 seconds for the scan to complete
-                await new Promise(resolve => setTimeout(resolve, 5000));
-                
-                const scanResponse = await fetch(`${API_BASE}/wifi/scan/results`);
-                if (!scanResponse.ok) throw new Error('Failed to fetch scan results');
-                
-                networks = await scanResponse.json();
-                displayNetworks(networks);
-                showStatus('Networks found', 'success');
-            } catch (error) {
-                showStatus(error.message, 'error');
-            }
         }
 
         async function scanNetworks() {

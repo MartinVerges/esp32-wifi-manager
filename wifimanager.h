@@ -44,7 +44,6 @@ class WIFIMANAGER {
 
     uint8_t configuredSSIDs = 0;        // Number of stored SSIDs in the NVS
 
-    bool softApRunning = false;         // Due to lack of functions, we have to remember if the AP is already running...
     bool createFallbackAP = true;       // Create an AP for configuration if no other connection is available
 
     uint64_t lastWifiCheckMillis = 0;   // Time of last Wifi health check

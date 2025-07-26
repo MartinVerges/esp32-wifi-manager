@@ -12,11 +12,17 @@
 #define WIFIMANAGER_MAX_APS 4   // Valid range is uint8_t
 #endif
 
+#ifndef CAPTIVEPORTAL_MAX_HANDLERS
+#define CAPTIVEPORTAL_MAX_HANDLERS 15
+#endif
+
 #include <Arduino.h>
 #include <Preferences.h>
 #include <ESPAsyncWebServer.h>
+#include <WiFi.h>
 
 void wifiTask(void* param);
+
 
 class WIFIMANAGER {
   private:
@@ -24,7 +30,7 @@ class WIFIMANAGER {
     uint8_t uiWebHandlerCount = 0;
     AsyncCallbackWebHandler * apiWebHandlers[10];
     uint8_t apiWebHandlerCount = 0;
-    AsyncCallbackWebHandler * captivePortalWebHandlers[5];
+    AsyncCallbackWebHandler * captivePortalWebHandlers[CAPTIVEPORTAL_MAX_HANDLERS];
     uint8_t captivePortalWebHandlerCount = 0;
 
   protected:
@@ -66,9 +72,14 @@ class WIFIMANAGER {
     void attachCaptivePortal();
     void detachCaptivePortal();
 
+    uint32_t getSoftApTimeRemaining();
+    bool setMode(wifi_mode_t mode);
+
   public:
     // We let the loop run as as Task
-    TaskHandle_t WifiCheckTask;
+    TaskHandle_t wifiTaskHandle;
+    TaskHandle_t dnsTaskHandle;
+    volatile bool dnsServerActive = false;
 
     WIFIMANAGER(const char * ns = "wifimanager");
     virtual ~WIFIMANAGER();
@@ -106,6 +117,9 @@ class WIFIMANAGER {
     // Try each known SSID and connect until none is left or one is connected.
     bool tryConnect();
 
+    bool tryConnectSpecific(uint8_t networkId);
+
+
     // Check if a SSID is stored in the config
     bool configAvailable();
 
@@ -113,7 +127,7 @@ class WIFIMANAGER {
     void configueSoftAp(String apName = "", String apPass = "");
 
     // Start a SoftAP, called if no wifi can be connected
-    bool runSoftAP(String apName = "", String apPass = "");
+    bool startSoftAP(String apName = "", String apPass = "");
 
     // Disconnect/Stop SoftAP Mode
     void stopSoftAP();
@@ -125,7 +139,7 @@ class WIFIMANAGER {
     void stopWifi(bool killTask = false);
 
     // Run in the loop to maintain state
-    void loop();
+    void loop(bool force = false);
 
     // Write AP Settings into persistent storage. Called on each addAP;
     bool writeToNVS();

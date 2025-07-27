@@ -1,0 +1,16 @@
+# Temporary and development files
+*.patch
+*_patch.cpp
+*_validation_*.cpp
+*.tmp
+*.bak
+
+# IDE files
+.vscode/settings.json
+
+# Build artifacts
+build/
+.pio/
+*.bin
+*.elf
+*.map

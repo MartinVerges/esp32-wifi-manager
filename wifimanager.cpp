@@ -31,12 +31,15 @@ void WIFIMANAGER::logMessage(String msg) {
  * @brief Background Task running as a loop forever
  * @param param needs to be a valid WIFIMANAGER instance
  */
-void wifiTask(void* param) {
+void wifiBgTask(void* param) {
   yield();
   delay(500); // wait a short time until everything is setup before executing the loop forever
   yield();
   const TickType_t xDelay = 10000 / portTICK_PERIOD_MS;
   WIFIMANAGER * wifimanager = (WIFIMANAGER *) param;
+
+  wifimanager->loop(true);  // force run, to skip wait time
+  delay(500);
 
   for(;;) {
     yield();
@@ -45,15 +48,17 @@ void wifiTask(void* param) {
     vTaskDelay(xDelay);
   }
 }
-void dnsTask(void* param) {
+
+void dnsBgTask(void* param) {
   yield();
   delay(500); // wait a short time until everything is setup before executing the loop forever
   yield();
-  const TickType_t xDelay = 1 / portTICK_PERIOD_MS;
+  const TickType_t xDelay = 50 / portTICK_PERIOD_MS;
+  WIFIMANAGER * wifimanager = (WIFIMANAGER *) param;
 
   for(;;) {
     yield();
-    dnsServer.processNextRequest();
+    if (wifimanager->dnsServerActive) dnsServer.processNextRequest();
     yield();
     vTaskDelay(xDelay);
   }
@@ -70,31 +75,36 @@ void WIFIMANAGER::startBackgroundTask(String softApName, String softApPass) {
   if (softApName.length()) this->softApName = softApName;
   if (softApPass.length()) this->softApPass = softApPass;
   loadFromNVS();
+  // setMode(WIFI_STA);
   tryConnect();
 
   BaseType_t taskCreated = xTaskCreatePinnedToCore(
-    wifiTask,
+    wifiBgTask,
     "WifiManager",
     4096,   // Stack size in words
     this,   // Task input parameter
     1,      // Priority of the task
-    &WifiCheckTask,  // Task handle.
+    &wifiTaskHandle,  // Task handle.
     0       // Core where the task should run
   );
 
   if (taskCreated != pdPASS) {
-    logMessage("[ERROR] WifiManager: Error creating background task\n");
+    logMessage("[ERROR] WifiManager: Error creating Wifi background task\n");
   }
 
   xTaskCreatePinnedToCore(
-    dnsTask,
+    dnsBgTask,
     "WifiManagerDNS",
     4096,   // Stack size in words
     this,   // Task input parameter
     1,      // Priority of the task
-    &WifiCheckTask,  // Task handle.
+    &dnsTaskHandle,  // Task handle.
     0       // Core where the task should run
   );
+
+  if (taskCreated != pdPASS) {
+    logMessage("[ERROR] WifiManager: Error creating DNS background task\n");
+  }
 }
 
 /**
@@ -107,24 +117,51 @@ WIFIMANAGER::WIFIMANAGER(const char * ns) {
 
   // AP on/off
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
-    logMessage("[WIFI] onEvent() AP mode started!\n");
+    logMessage("[WIFI][EVENT] AP mode started!\n");
     }, ARDUINO_EVENT_WIFI_AP_START
   );
 
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
-    logMessage("[WIFI] onEvent() AP mode stopped!\n");
+    logMessage("[WIFI][EVENT] AP mode stopped!\n");
     }, ARDUINO_EVENT_WIFI_AP_STOP
   );
 
   // AP client join/leave
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
-    logMessage("[WIFI] onEvent() new client connected to softAP!\n");
+    logMessage(String("[WIFI][EVENT] Client connected - MAC: ") +
+      String(info.wifi_ap_staconnected.mac[0], HEX) + ":" +
+      String(info.wifi_ap_staconnected.mac[1], HEX) + ":" +
+      String(info.wifi_ap_staconnected.mac[2], HEX) + ":" +
+      String(info.wifi_ap_staconnected.mac[3], HEX) + ":" +
+      String(info.wifi_ap_staconnected.mac[4], HEX) + ":" +
+      String(info.wifi_ap_staconnected.mac[5], HEX) + "\n");
     }, ARDUINO_EVENT_WIFI_AP_STACONNECTED
   );
 
   WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
-    logMessage("[WIFI] onEvent() Client disconnected from softAP!\n");
+    logMessage(String("[WIFI][EVENT] Client disconnected - MAC: ") +
+      String(info.wifi_ap_stadisconnected.mac[0], HEX) + ":" +
+      String(info.wifi_ap_stadisconnected.mac[1], HEX) + ":" +
+      String(info.wifi_ap_stadisconnected.mac[2], HEX) + ":" +
+      String(info.wifi_ap_stadisconnected.mac[3], HEX) + ":" +
+      String(info.wifi_ap_stadisconnected.mac[4], HEX) + ":" +
+      String(info.wifi_ap_stadisconnected.mac[5], HEX) + "\n");
     }, ARDUINO_EVENT_WIFI_AP_STADISCONNECTED
+  );
+
+  WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
+    logMessage("[WIFI][EVENT] *** IP ASSIGNED TO CLIENT: " + 
+      IPAddress(info.wifi_ap_staipassigned.ip.addr).toString() + " ***\n");
+    }, ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED
+  );
+
+  WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
+    logMessage("[WIFI][EVENT] Disconnected from STA\n");
+    }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED
+  );
+  WiFi.onEvent([&](WiFiEvent_t event, WiFiEventInfo_t info) {
+    logMessage("[WIFI][EVENT] Connected to STA\n");
+    }, ARDUINO_EVENT_WIFI_STA_CONNECTED
   );
 }
 
@@ -133,8 +170,20 @@ WIFIMANAGER::WIFIMANAGER(const char * ns) {
  * @details will stop the background task as well but not cleanup the AsyncWebserver
  */
 WIFIMANAGER::~WIFIMANAGER() {
-  vTaskDelete(WifiCheckTask);
-  // FIXME: get rid of the registered Webserver AsyncCallbackWebHandlers
+  dnsServerActive = false;
+
+  // Give DNS task time to stop processing
+  delay(100);
+  yield();
+
+  if (wifiTaskHandle != NULL) {
+    vTaskDelete(wifiTaskHandle);
+    wifiTaskHandle = NULL;
+  }
+  if (dnsTaskHandle != NULL) {
+    vTaskDelete(dnsTaskHandle);
+    dnsTaskHandle = NULL;
+  }
 }
 
 /**
@@ -285,7 +334,37 @@ bool WIFIMANAGER::delWifi(String apName) {
       if (delWifi(i)) num++;
     }
   }
-  return num > 0;
+  if (num > 0) return writeToNVS();
+  return false;
+}
+
+String _wifiModeAsString(wifi_mode_t mode) {
+    if (mode == WIFI_MODE_STA) return "WIFI_MODE_STA";
+    if (mode == WIFI_MODE_AP) return "WIFI_MODE_AP";
+    if (mode == WIFI_MODE_APSTA) return "WIFI_MODE_APSTA";
+    if (mode == WIFI_MODE_NULL) return "WIFI_MODE_NULL";
+    if (mode == WIFI_MODE_MAX) return "WIFI_MODE_MAX";
+    return "UNKNOWN";
+}
+
+bool WIFIMANAGER::setMode(wifi_mode_t mode) {
+  bool result = WiFi.mode(mode);
+  if (!result) return false;
+
+  unsigned long startTime = millis();
+  const unsigned long timeout = 10000; // 10 Sekunden
+
+  logMessage("[WIFI] Switching WiFi mode to " + _wifiModeAsString(mode) + " ...");
+  while (WiFi.getMode() != mode && millis() - startTime < timeout) {
+    delay(10);
+    logMessage(".");
+  }
+  if (WiFi.getMode() == mode) {
+    logMessage(" success\n");
+  } else {
+    logMessage(" timeout\n");
+  }
+  return true;
 }
 
 /**
@@ -301,58 +380,67 @@ bool WIFIMANAGER::configAvailable() {
 /**
  * @brief Provides the apList element id of the first configured slot
  * @details It's used to speed up connection by getting the first available configuration
- * @note only call this function when you have configuredSSIDs > 0, otherwise it will return 0 as well and fail!
- * @return uint8_t apList element id
+ * @return uint8_t apList element id or WIFIMANAGER_MAX_APS on error
  */
 uint8_t WIFIMANAGER::getApEntry() {
   for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
     if (apList[i].apName.length()) return i;
   }
   logMessage("[WIFI][ERROR] We did not find a valid entry!\n");
-  logMessage("[WIFI][ERROR] Make sure to not call this function if configuredSSIDs != 1.\n");
-  return 0;
+  logMessage("[WIFI][ERROR] Make sure to not call this function if not configuredSSIDs > 0.\n");
+  return WIFIMANAGER_MAX_APS;
+}
+
+/**
+ * @brief Return the time in seconds until the SoftAP times out.
+ * @return uint32_t time in seconds until timeout
+ */
+uint32_t WIFIMANAGER::getSoftApTimeRemaining() {
+  auto time = (timeoutApMillis - (millis() - startApTimeMillis)) / 1000;
+  if (time > timeoutApMillis) time = 0;
+  return time;
 }
 
 /**
  * @brief Background loop function running inside the task
  * @details regulary check if the connection is up&running, try to reconnect or create a fallback AP
  */
-void WIFIMANAGER::loop() {
-  if (millis() - lastWifiCheckMillis < intervalWifiCheckMillis) return;
+void WIFIMANAGER::loop(bool force) {
+  if (!force && millis() - lastWifiCheckMillis < intervalWifiCheckMillis) return;
   lastWifiCheckMillis = millis();
 
-  if(WiFi.waitForConnectResult() == WL_CONNECTED) {
-    // Check if we are connected to a well known SSID
-    for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
-      if (WiFi.SSID() == apList[i].apName) {
-        logMessage(String("[WIFI][STATUS] Connected to known SSID: '") + WiFi.SSID() + "' with IP " + WiFi.localIP().toString() + "\n");
+  if (WiFi.getMode() == WIFI_AP) {
+    logMessage("[WIFI] Operating in softAP (" + WiFi.softAPIP().toString() + ") mode with " + String(WiFi.softAPgetStationNum()) + " client(s). "
+              + "Next connection attempt in " + String(getSoftApTimeRemaining()) + " seconds\n");
+
+    if (getSoftApTimeRemaining() == 0) {
+      if (WiFi.softAPgetStationNum() > 0) {
+        logMessage("[WIFI] SoftAP has " + String(WiFi.softAPgetStationNum()) + " clients connected! Resetting timeout\n");
+        startApTimeMillis = millis(); // reset timeout as someone is connected
         return;
+      }
+      logMessage("[WIFI] Running in softAP mode but timeout reached. Closing softAP!\n");
+      stopSoftAP();
+      delay(100);
+    }
+  } else if (WiFi.getMode() == WIFI_STA) {
+    if (WiFi.waitForConnectResult() == WL_CONNECTED && !WiFi.SSID().isEmpty()) {
+      // Check if we are connected to a well known SSID
+      for(uint8_t i=0; i<WIFIMANAGER_MAX_APS; i++) {
+        if (WiFi.SSID() == apList[i].apName) {
+          logMessage(String("[WIFI][STATUS] Connected to known SSID: '") + WiFi.SSID() + "' with IP " + WiFi.localIP().toString() + "\n");
+          return;
+        }
       }
     }
     // looks like we are connected to something else, strange!?
     logMessage("[WIFI] Connected to an unknown SSID, ignoring. Currently connected to: " + WiFi.SSID() + "\n");
   } else {
-    if (WiFi.softAPIP() != IPAddress(0,0,0,0)) {
-      logMessage("[WIFI] Operating in softAP mode with " + String(WiFi.softAPgetStationNum()) + " client(s). Skipping connection attempt to stored SSID.\n");
-
-    } else {
-      // let's try to connect to some WiFi in Rangef
-      if (!tryConnect()) {
-        if (createFallbackAP) runSoftAP();
-        else logMessage("[WIFI] Auto creation of softAP is disabled. SoftAP won't start.\n");
-      }
+    // let's try to connect to some WiFi in Range
+    if (!tryConnect()) {
+      if (createFallbackAP) startSoftAP();
+      else logMessage("[WIFI] Auto creation of softAP is disabled. SoftAP won't start.\n");
     }
-  }
-
-  if (WiFi.softAPIP() != IPAddress(0,0,0,0) && millis() - startApTimeMillis > timeoutApMillis) {
-    if (WiFi.softAPgetStationNum() > 0) {
-      logMessage("[WIFI] SoftAP has " + String(WiFi.softAPgetStationNum()) + " clients connected!\n");
-      startApTimeMillis = millis(); // reset timeout as someone is connected
-      return;
-    }
-    logMessage("[WIFI] Running in softAP mode but timeout reached. Closing softAP!\n");
-    stopSoftAP();
-    delay(100);
   }
 }
 
@@ -365,11 +453,11 @@ void WIFIMANAGER::loop() {
 bool WIFIMANAGER::tryConnect() {
   if (!configAvailable()) {
     logMessage("[WIFI] No SSIDs configured in NVS, unable to connect.\n");
-    if (createFallbackAP) runSoftAP();
+    if (createFallbackAP) startSoftAP();
     return false;
   }
 
-  if (WiFi.softAPIP() != IPAddress(0,0,0,0)) {
+  if (WiFi.getMode() == WIFI_AP) {
     logMessage("[WIFI] SoftAP running with " + String(WiFi.softAPgetStationNum()) + " client(s) connected.\n");
   }
 
@@ -378,13 +466,22 @@ bool WIFIMANAGER::tryConnect() {
     // only one configured SSID, skip scanning and try to connect to this specific one.
     choosenAp = getApEntry();
   } else {
-    WiFi.mode(WIFI_AP_STA);
-    int8_t scanResult = WiFi.scanNetworks(false, true);
-    if(scanResult <= 0) {
-      logMessage("[WIFI] Unable to find WIFI networks in range to this device!\n");
-      return false;
+    logMessage("[WIFI][CONNECT] Scanning for WIFI networks...\n");
+    int8_t scanResult = WiFi.scanNetworks(true, true);
+    while (true) {
+      scanResult = WiFi.scanComplete();
+      if (scanResult == WIFI_SCAN_RUNNING) {
+        delay(50);
+        continue;
+      }
+      if (scanResult <= 0) {
+        setMode(WIFI_OFF); // scan changes mode, but won't return to the last state
+        logMessage("[WIFI][CONNECT] Unable to find WIFI networks in range to this device!\n");
+        return false;
+      }
+      break;
     }
-    logMessage(String("[WIFI] Found ") + String(scanResult) + " networks in range\n");
+    logMessage(String("[WIFI][CONNECT] Found ") + String(scanResult) + " networks in range\n");
     int choosenRssi = INT_MIN;  // we want to select the strongest signal with the highest priority if we have multiple SSIDs available
     for(int8_t x = 0; x < scanResult; ++x) {
       String ssid;
@@ -408,56 +505,76 @@ bool WIFIMANAGER::tryConnect() {
   }
 
   if (choosenAp == INT_MIN) {
-    logMessage("[WIFI] Unable to find an SSID to connect to!\n");
+    logMessage("[WIFI][CONNECT] Unable to find an SSID to connect to!\n");
     return false;
   } else {
-    logMessage(String("[WIFI] Trying to connect to SSID ") + apList[choosenAp].apName 
-      + " with password " + (apList[choosenAp].apPass.length() > 0 ? "'***'" : "''") + "\n"
+    logMessage(String("[WIFI][CONNECT] Trying to connect to SSID ") + apList[choosenAp].apName 
+      + " " + (apList[choosenAp].apPass.length() > 0 ? "with password '***'" : "without password") + "\n"
     );
-
-    WiFi.begin(apList[choosenAp].apName.c_str(), apList[choosenAp].apPass.c_str());
-    wl_status_t status = (wl_status_t)WiFi.waitForConnectResult(5000UL);
-
-    auto startTime = millis();
-    // wait for connection, fail, or timeout
-    while(status != WL_CONNECTED && status != WL_NO_SSID_AVAIL && status != WL_CONNECT_FAILED && (millis() - startTime) <= 10000) {
-        delay(10);
-        status = (wl_status_t)WiFi.waitForConnectResult(5000UL);
-    }
-    switch(status) {
-      case WL_IDLE_STATUS:
-        logMessage("[WIFI] Connecting failed (0): Idle\n");
-        break;
-      case WL_NO_SSID_AVAIL:
-        logMessage("[WIFI] Connecting failed (1): The AP can't be found\n");
-        break;
-      case WL_SCAN_COMPLETED:
-        logMessage("[WIFI] Connecting failed (2): Scan completed\n");
-        break;
-      case WL_CONNECTED: // 3
-        logMessage("[WIFI] Connection successful\n");
-        logMessage("[WIFI] SSID   : " + WiFi.SSID() + "\n");
-        logMessage("[WIFI] IP     : " + WiFi.localIP().toString() + "\n");
-        stopSoftAP();
-        return true;
-        break;
-      case WL_CONNECT_FAILED:
-        logMessage("[WIFI] Connecting failed (4): Unknown reason\n");
-        break;
-      case WL_CONNECTION_LOST:
-        logMessage("[WIFI] Connecting failed (5): Connection lost\n");
-        break;
-      case WL_DISCONNECTED:
-        logMessage("[WIFI] Connecting failed (6): Disconnected\n");
-        break;
-      case WL_NO_SHIELD:
-        logMessage("[WIFI] Connecting failed (7): No Wifi shield found\n");
-        break;
-      default:
-        logMessage("[WIFI] Connecting failed (" + String(status) + "): Unknown status code\n");
-        break;
-    }
+    return tryConnectSpecific(choosenAp);
   }
+}
+
+/**
+ * @brief Try to connect to a specific network ID
+ * @param networkId The specific network ID to connect to
+ * @return true on success, false on failure
+ */
+bool WIFIMANAGER::tryConnectSpecific(uint8_t networkId) {
+  if (networkId >= WIFIMANAGER_MAX_APS) {
+    logMessage("[WIFI][CONNECT] Invalid network ID: " + String(networkId) + "\n");
+    return false;
+  }
+
+  if (WiFi.getMode() == WIFI_AP) stopSoftAP();
+
+  setMode(WIFI_STA);
+  WiFi.begin(apList[networkId].apName.c_str(), apList[networkId].apPass.c_str());
+  wl_status_t status = (wl_status_t)WiFi.waitForConnectResult(5000UL);
+
+  auto startTime = millis();
+  // wait for connection, fail, or timeout
+  while(status != WL_CONNECTED && status != WL_NO_SSID_AVAIL && status != WL_CONNECT_FAILED && (millis() - startTime) <= 10000) {
+      delay(10);
+      status = (wl_status_t)WiFi.waitForConnectResult(5000UL);
+  }
+  switch(status) {
+    case WL_IDLE_STATUS:
+      logMessage("[WIFI][CONNECT] Connecting failed (0): Idle\n");
+      break;
+    case WL_NO_SSID_AVAIL:
+      logMessage("[WIFI][CONNECT] Connecting failed (1): The AP can't be found\n");
+      break;
+    case WL_SCAN_COMPLETED:
+      logMessage("[WIFI][CONNECT] Connecting failed (2): Scan completed\n");
+      break;
+    case WL_CONNECTED: // 3
+      logMessage("[WIFI][CONNECT] Connection successful\n");
+      logMessage("[WIFI][CONNECT] SSID   : " + WiFi.SSID() + "\n");
+      logMessage("[WIFI][CONNECT] IP     : " + WiFi.localIP().toString() + "\n");
+      logMessage("[WIFI][CONNECT] Gateway: " + WiFi.gatewayIP().toString() + "\n");
+      logMessage("[WIFI][CONNECT] Subnet : " + WiFi.subnetMask().toString() + "\n");
+      logMessage("[WIFI][CONNECT] WebServer should be accessible at http://" + WiFi.localIP().toString() + "/wifi\n");
+      return true;
+      break;
+    case WL_CONNECT_FAILED:
+      logMessage("[WIFI][CONNECT] Connecting failed (4): Unknown reason\n");
+      break;
+    case WL_CONNECTION_LOST:
+      logMessage("[WIFI][CONNECT] Connecting failed (5): Connection lost\n");
+      break;
+    case WL_DISCONNECTED:
+      logMessage("[WIFI][CONNECT] Connecting failed (6): Disconnected\n");
+      break;
+    case WL_NO_SHIELD:
+      logMessage("[WIFI][CONNECT] Connecting failed (7): No Wifi shield found\n");
+      break;
+    default:
+      logMessage("[WIFI][CONNECT] Connecting failed (" + String(status) + "): Unknown status code\n");
+      break;
+  }
+  // clean up IP config after failed connection to avoid issues with softAp detection
+  WiFi.disconnect(true);
   return false;
 }
 
@@ -472,55 +589,50 @@ void WIFIMANAGER::configueSoftAp(String apName, String apPass) {
  * @return true on success
  * @return false o error or if a SoftAP already runs
  */
-bool WIFIMANAGER::runSoftAP(String apName, String apPass) {
+bool WIFIMANAGER::startSoftAP(String apName, String apPass) {
   if (apName.length()) this->softApName = apName;
   if (apPass.length()) this->softApPass = apPass;
 
-  if (WiFi.softAPIP() != IPAddress(0,0,0,0)) return true; // already running
+  if (WiFi.getMode() == WIFI_AP) return true; // already running
   startApTimeMillis = millis();
 
   if (this->softApName == "") this->softApName = "ESP_" + String((uint32_t)ESP.getEfuseMac());
   logMessage("[WIFI] Starting configuration portal on AP SSID " + this->softApName + "\n");
 
-  WiFi.mode(WIFI_AP_STA);
-
-  /* Requires IDF >= 5.4
-  const char* captivePortalUrl = "http://192.168.4.1/portal";
-  // --- Configure DHCP Option 114 ---
-  // Stop the DHCP server on the AP interface
-  tcpip_adapter_dhcps_stop(TCPIP_ADAPTER_IF_AP);
-  // Set Option 114 (Captive Portal URL)
-  tcpip_adapter_dhcp_option_mode_t opt_info;
-  opt_info.ip = 0; // Not used for vendor specific options like 114
-  esp_err_t result = tcpip_adapter_dhcps_option(
-    ESP_NETIF_OP_SET,          // Operation: SET the option
-    TCPIP_ADAPTER_IF_AP,             // Option ID: 114 (Captive Portal)
-    114,                       // Option ID: 114 (Captive Portal)
-    (void*)captivePortalUrl,   // Option Value: Pointer to the URL string
-    strlen(captivePortalUrl)   // Option Length: Length of the URL string
-  );
-  if (result == ESP_OK) {
-    Serial.println("Successfully set DHCP Option 114.");
-  } else {
-      Serial.printf("Failed to set DHCP Option 114, error: %d\n", result);
-  }
-  // Start the DHCP server again on the AP interface
-  tcpip_adapter_dhcps_start(TCPIP_ADAPTER_IF_AP);
-  // --- End DHCP Option Configuration ---
-*/
-
+  // setMode(WIFI_AP); // done by WiFi.softAP
   bool state = WiFi.softAP(this->softApName.c_str(), (this->softApPass.length() ? this->softApPass.c_str() : NULL));
   if (state) {
-    IPAddress IP = WiFi.softAPIP();
-    char ipString[16]; // Genug Platz für "xxx.xxx.xxx.xxx\0"
-    sprintf(ipString, "%d.%d.%d.%d", IP[0], IP[1], IP[2], IP[3]);
-
     dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
-    dnsServer.setTTL(300);
-    dnsServer.start(53, "*", IP);
+    dnsServer.setTTL(60);
+    
+    // Start DNS server with better error handling
+    if (!dnsServer.start(53, "*", WiFi.softAPIP())) {
+      logMessage("[WIFI] DNS server failed to start, retrying...\n");
+      delay(200);
+      dnsServer.start(53, "*", WiFi.softAPIP());
+    }
+
+    dnsServerActive = true;
+    delay(100);
+
     attachCaptivePortal();
 
-    logMessage("[WIFI] AP created. My IP is: " + String(ipString) + "\n");
+    logMessage("[WIFI][SOFTAP] SoftAP successfully started\n");
+    logMessage("[WIFI][SOFTAP] SSID:        " + this->softApName  + "\n");
+    logMessage(String("[WIFI][SOFTAP] Password:    ") + (this->softApPass.length() > 0 ? "***" : "OPEN") + "\n");
+    logMessage("[WIFI][SOFTAP] IP Address:  " + WiFi.softAPIP().toString() + "\n");
+    logMessage("[WIFI][SOFTAP] IP Subnet:   " + WiFi.softAPSubnetMask().toString() + "\n");
+    logMessage("[WIFI][SOFTAP] MAC Address: " + WiFi.softAPmacAddress() + "\n");
+    logMessage("[WIFI][SOFTAP] Channel:     " + String(WiFi.channel()) + "\n");
+    logMessage(String("[WIFI][SOFTAP] Encryption:  ") + (this->softApPass.length() > 0 ? "WPA2" : "OPEN") + "\n");
+    logMessage("[WIFI][SOFTAP] WiFi Power:  " + String(WiFi.getTxPower()) + " dBm\n");
+    logMessage("[WIFI][SOFTAP] WiFi Mode:   " + String(WiFi.getMode()) + " (1=STA, 2=AP, 3=AP_STA)\n");
+
+    if (configAvailable()) {
+      logMessage("[WIFI][SOFTAP] Will timeout in " + String(timeoutApMillis/1000) + " seconds if no clients connect (saved networks available)\n");
+    } else {
+      logMessage("[WIFI][SOFTAP] Will run indefinitely (no saved networks configured)\n");
+    }
     return true;
   } else {
     logMessage("[WIFI] Unable to create softAP!\n");
@@ -533,8 +645,15 @@ bool WIFIMANAGER::runSoftAP(String apName, String apPass) {
  */
 void WIFIMANAGER::stopSoftAP() {
   dnsServer.stop();
+  dnsServerActive = false;
+  delay(100);
+
   detachCaptivePortal();
-  WiFi.softAPdisconnect(true);
+  WiFi.softAPdisconnect(false);
+  setMode(WIFI_OFF);
+
+  delay(500); // Give more time for interface to shut down completely
+  logMessage("[WIFI] SoftAP stopped and DNS server deactivated\n");
 }
 
 /**
@@ -542,6 +661,7 @@ void WIFIMANAGER::stopSoftAP() {
  */
 void WIFIMANAGER::stopClient() {
   WiFi.disconnect();
+  setMode(WIFI_OFF);
 }
 
 /**
@@ -549,47 +669,127 @@ void WIFIMANAGER::stopClient() {
  * @param killTask true to kill the background task to prevent reconnects
  */
 void WIFIMANAGER::stopWifi(bool killTask) {
-  if (killTask) vTaskDelete(WifiCheckTask);
+
+  dnsServerActive = false;
+
+  if (killTask) {
+    vTaskDelete(wifiTaskHandle);
+    vTaskDelete(dnsTaskHandle);
+  }
+
   stopSoftAP();
   stopClient();
+  setMode(WIFI_OFF);
 }
 
 void WIFIMANAGER::attachCaptivePortal() {
-  /*captivePortalWebHandlers[captivePortalWebHandlerCount++] = webServer->on("/index.htm", HTTP_GET, [&](AsyncWebServerRequest * request) {
-    logMessage("[WIFI][INFO] Captive portal requested on /index.html\n");
-    request->redirect(uiPrefix.c_str());
-  });
-  captivePortalWebHandlers[captivePortalWebHandlerCount++] = webServer->on("/generate_204", HTTP_GET, [&](AsyncWebServerRequest * request) {
-    logMessage("[WIFI][INFO] Captive portal requested on /generate_204\n");
-    request->redirect(uiPrefix.c_str());
-  });
-  captivePortalWebHandlers[captivePortalWebHandlerCount++] = webServer->on("/success.txt", HTTP_GET, [&](AsyncWebServerRequest * request) {
-    logMessage("[WIFI][INFO] Captive portal requested on /success.txt\n");
-    request->redirect(uiPrefix.c_str());
-  });
-  captivePortalWebHandlers[captivePortalWebHandlerCount++] = webServer->on("/connecttest.txt", HTTP_GET, [&](AsyncWebServerRequest * request) {
-    logMessage("[WIFI][INFO] Captive portal requested on /connecttest.txt\n");
-    request->redirect(uiPrefix.c_str());
-  });
+  // Check if webServer is initialized before registering handlers
+  if (webServer == nullptr) {
+    logMessage("[WIFI][WARNING] WebServer not initialized yet, skipping captive portal registration\n");
+    return;
+  }
 
-  webServer->onNotFound([](AsyncWebServerRequest *request) {
-    Serial.print("inside onNotFound\n");
-    
-    if (request->url().endsWith("favicon.ico")) {
-      request->send(404, "text/plain", "Not found");
-    } else {
-      Serial.print("[WIFI][INFO] Captive portal requested on " + request->url() + "\n");
-      request->redirect("/wifi");
+  // Reset handler count to prevent overflow
+  captivePortalWebHandlerCount = 0;
+
+  // Android Captive Portal Detection - Multiple URLs for better compatibility
+  if (captivePortalWebHandlerCount < CAPTIVEPORTAL_MAX_HANDLERS) {
+    captivePortalWebHandlers[captivePortalWebHandlerCount++] = &webServer->on("/generate_204", HTTP_GET, [&](AsyncWebServerRequest * request) {
+      String host = request->hasHeader("Host") ? request->getHeader("Host")->value() : "unknown";
+      String userAgent = request->hasHeader("User-Agent") ? request->getHeader("User-Agent")->value() : "unknown";
+      logMessage("[WIFI][CAPTIVE] Android captive portal detection: /generate_204 from host: " + host + ", User-Agent: " + userAgent + "\n");
+      
+      // Check if this is an Android connectivity check - if so, redirect to trigger captive portal
+      if (host.indexOf("connectivitycheck") >= 0 || 
+          host.indexOf("clients3.google.com") >= 0 ||
+          host.indexOf("clients1.google.com") >= 0 ||
+          host.indexOf("android.com") >= 0) {
+        
+        // Samsung devices need 200 + HTML meta-refresh instead of 302 redirect
+        if (userAgent.indexOf("Samsung") >= 0 || userAgent.indexOf("SM-") >= 0 || userAgent.indexOf("GT-") >= 0) {
+          logMessage("[WIFI][CAPTIVE] Samsung device detected - sending 200 + HTML meta-refresh\n");
+          String htmlResponse = "<html><head><title>Redirecting</title><meta http-equiv='refresh' content='0; url=" + uiPrefix + "'></head><body>Please wait, redirecting to WiFi setup...<br><a href='" + uiPrefix + "'>Click here if not redirected</a></body></html>";
+          request->send(200, "text/html", htmlResponse);
+          return;
+        } else {
+          logMessage("[WIFI][CAPTIVE] Standard Android device - sending 302 redirect\n");
+          request->redirect(uiPrefix.c_str());
+          return;
+        }
+      } else {
+        logMessage("[WIFI][CAPTIVE] Android device using host (" + host + ") not detected - sending 204\n");
+      }
+      
+      // For other requests, send 204 (compatibility)
+      request->send(204);
+    });
+  }
+
+  if (captivePortalWebHandlerCount < CAPTIVEPORTAL_MAX_HANDLERS) {
+    captivePortalWebHandlers[captivePortalWebHandlerCount++] = &webServer->on("/gen_204", HTTP_GET, [&](AsyncWebServerRequest * request) {
+      logMessage("[WIFI][CAPTIVE] Android captive portal detection: /gen_204\n");
+      request->send(204); // Alternative Android endpoint expects 204 No Content (Fallback URL of older devices)
+    });
+  }
+
+  // Microsoft Captive Portal Detection
+  if (captivePortalWebHandlerCount < CAPTIVEPORTAL_MAX_HANDLERS) {
+    captivePortalWebHandlers[captivePortalWebHandlerCount++] = &webServer->on("/fwlink", HTTP_GET, [&](AsyncWebServerRequest * request) {
+      logMessage("[WIFI][CAPTIVE] Microsoft captive portal detection: /connecttest.txt\n");
+      request->redirect(uiPrefix.c_str());
+    });
+  }
+
+  // Windows Captive Portal Detection
+  if (captivePortalWebHandlerCount < CAPTIVEPORTAL_MAX_HANDLERS) {
+    captivePortalWebHandlers[captivePortalWebHandlerCount++] = &webServer->on("/connecttest.txt", HTTP_GET, [&](AsyncWebServerRequest * request) {
+      logMessage("[WIFI][CAPTIVE] Windows captive portal detection: /connecttest.txt\n");
+      request->redirect(uiPrefix.c_str());
+    });
+  }
+
+  // iOS Captive Portal Detection
+  if (captivePortalWebHandlerCount < CAPTIVEPORTAL_MAX_HANDLERS) {
+    captivePortalWebHandlers[captivePortalWebHandlerCount++] = &webServer->on("/hotspot-detect.html", HTTP_GET, [&](AsyncWebServerRequest * request) {
+      logMessage("[WIFI][CAPTIVE] iOS captive portal detection: /hotspot-detect.html\n");
+      request->redirect(uiPrefix.c_str());
+    });
+  }
+
+  // Ubuntu/Linux Captive Portal Detection
+  if (captivePortalWebHandlerCount < CAPTIVEPORTAL_MAX_HANDLERS) {
+    captivePortalWebHandlers[captivePortalWebHandlerCount++] = &webServer->on("/connectivity-check", HTTP_GET, [&](AsyncWebServerRequest * request) {
+      logMessage("[WIFI][CAPTIVE] Ubuntu captive portal detection: /connectivity-check\n");
+      request->redirect(uiPrefix.c_str());
+    });
+  }
+
+  // Catch-all handler for any unmatched requests (most important for captive portal)
+  webServer->onNotFound([&](AsyncWebServerRequest *request) {
+    String url = request->url();
+    String host = request->hasHeader("Host") ? request->getHeader("Host")->value() : "unknown";
+
+    // Ignore favicon and other assets to reduce log spam
+    if (url.endsWith("favicon.ico") || url.endsWith(".png") || url.endsWith(".jpg") || url.endsWith(".js") || url.endsWith(".css")) {
+      request->send(404);
+      return;
     }
-  });*/
+
+    logMessage("[WIFI][CAPTIVE] Captive portal catch-all: " + host + url + "\n");
+    request->redirect("http://" + WiFi.softAPIP().toString() + "/" + uiPrefix.c_str(), 302);
+  });
 }
 
+
 void WIFIMANAGER::detachCaptivePortal() {
+  // Only remove captive portal detection handlers, keep UI and API handlers
   for (int i = 0; i < captivePortalWebHandlerCount; i++) {
-    logMessage("[WIFI] Removing WebServer handler: DNS#" + String(i) + "\n");
+    logMessage("[WIFI] Removing Captive Portal handler: #" + String(i) + "\n");
     webServer->removeHandler(captivePortalWebHandlers[i]);
   }
-  captivePortalWebHandlerCount = 0;  
+  captivePortalWebHandlerCount = 0;
+  // Note: UI and API handlers remain active for WiFi-connected access
+  logMessage("[WIFI] Captive Portal handlers removed, UI/API remain available\n");
 }
 
 /**
@@ -608,6 +808,10 @@ void WIFIMANAGER::detachWebServer() {
   detachCaptivePortal();
 }
 
+// Rate limiting for scan endpoint - more permissive
+static uint64_t lastScanRequest = 0;
+static const uint32_t SCAN_COOLDOWN_MS = 2000;
+
 /**
  * @brief Attach the WebServer to the WifiManager to register the RESTful API
  * @param srv WebServer object
@@ -615,11 +819,17 @@ void WIFIMANAGER::detachWebServer() {
 void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
   webServer = srv; // store it in the class for later use
 
+  // If SoftAP is already running, register captive portal handlers now
+  if (WiFi.getMode() == WIFI_AP && dnsServerActive) {
+    logMessage("[WIFI] Registering captive portal handlers for existing SoftAP\n");
+    attachCaptivePortal();
+  }
+
   apiWebHandlers[apiWebHandlerCount++] = &webServer->on((apiPrefix + "/softap/start").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request) {
     request->send(200, "application/json", "{\"message\":\"Soft AP stopped\"}");
     yield();
     delay(250);
-    runSoftAP();
+    startSoftAP();
   });
   
   apiWebHandlers[apiWebHandlerCount++] = &webServer->on((apiPrefix + "/softap/stop").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request) {
@@ -638,30 +848,113 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
 
   apiWebHandlers[apiWebHandlerCount++] = &webServer->on((apiPrefix + "/add").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
-    JsonDocument jsonBuffer;
-    deserializeJson(jsonBuffer, (const char*)data);
-    auto resp = request;
-    if (!jsonBuffer["apName"].is<String>() || !jsonBuffer["apPass"].is<String>()) {
-      resp->send(422, "application/json", "{\"message\":\"Invalid data\"}");
+    // Validate Content-Type header
+    if (!request->hasHeader("Content-Type") || !request->getHeader("Content-Type")->value().startsWith("application/json")) {
+      request->send(400, "application/json", "{\"error\":\"Content-Type must be application/json\"}");
       return;
     }
-    if (!addWifi(jsonBuffer["apName"].as<String>(), jsonBuffer["apPass"].as<String>())) {
-      resp->send(500, "application/json", "{\"message\":\"Unable to process data\"}");
-    } else resp->send(200, "application/json", "{\"message\":\"New AP added\"}");
+
+    // Validate request size limits
+    if (len == 0 || len > 512) {
+      request->send(400, "application/json", "{\"error\":\"Invalid request size (max 512 bytes)\"}");
+      return;
+    }
+
+    JsonDocument jsonBuffer;
+    DeserializationError error = deserializeJson(jsonBuffer, (const char*)data, len);
+
+    if (error) {
+      request->send(400, "application/json", "{\"error\":\"Invalid JSON format\"}");
+      return;
+    }
+
+    // Validate required fields exist and have correct types
+    if (!jsonBuffer["apName"].is<String>() || !jsonBuffer["apPass"].is<String>()) {
+      request->send(422, "application/json", "{\"error\":\"Missing or invalid required fields: apName, apPass\"}");
+      return;
+    }
+
+    String apName = jsonBuffer["apName"].as<String>();
+    String apPass = jsonBuffer["apPass"].as<String>();
+
+    // Validate SSID length (WiFi standard: 1-32 bytes, ESP32 uses 1-31)
+    if (apName.length() < 1 || apName.length() > 31) {
+      request->send(422, "application/json", "{\"error\":\"SSID must be 1-31 characters long\"}");
+      return;
+    }
+
+    // Validate password length (WiFi standard: max 63 characters)
+    if (apPass.length() > 63) {
+      request->send(422, "application/json", "{\"error\":\"Password must not exceed 63 characters\"}");
+      return;
+    }
+
+    // Input sanitization - remove dangerous characters
+    apName.replace('\0', ' ');
+    apPass.replace('\0', ' ');
+    apName.trim();
+    apPass.trim();
+
+    // Final validation after sanitization
+    if (apName.length() == 0) {
+      request->send(422, "application/json", "{\"error\":\"SSID cannot be empty after sanitization\"}");
+      // Attempt to add WiFi with proper error handling
+      return;
+    }
+
+    if (!addWifi(apName, apPass)) {
+      request->send(500, "application/json", "{\"error\":\"Unable to add WiFi network - storage full or duplicate entry\"}");
+    } else {
+      request->send(200, "application/json", "{\"message\":\"WiFi network added successfully\"}");
+    }
   });
 
   apiWebHandlers[apiWebHandlerCount++] = &webServer->on((apiPrefix + "/id").c_str(), HTTP_DELETE, [&](AsyncWebServerRequest * request){}, NULL,
     [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
-    JsonDocument jsonBuffer;
-    deserializeJson(jsonBuffer, (const char*)data);
-    auto resp = request;
-    if (!jsonBuffer["id"].is<uint8_t>() || jsonBuffer["id"].as<uint8_t>() >= WIFIMANAGER_MAX_APS) {
-      resp->send(422, "application/json", "{\"message\":\"Invalid data\"}");
+    // Validate Content-Type
+    if (!request->hasHeader("Content-Type") || !request->getHeader("Content-Type")->value().startsWith("application/json")) {
+      request->send(400, "application/json", "{\"error\":\"Content-Type must be application/json\"}");
       return;
     }
-    if (!delWifi(jsonBuffer["id"].as<uint8_t>())) {
-      resp->send(500, "application/json", "{\"message\":\"Unable to delete entry\"}");
-    } else resp->send(200, "application/json", "{\"message\":\"AP deleted\"}");
+
+    // Validate request size
+    if (len == 0 || len > 256) {
+      request->send(400, "application/json", "{\"error\":\"Invalid request size (max 256 bytes)\"}");
+      return;
+    }
+    
+    JsonDocument jsonBuffer;
+    DeserializationError error = deserializeJson(jsonBuffer, (const char*)data, len);
+
+    if (error) {
+      request->send(400, "application/json", "{\"error\":\"Invalid JSON format\"}");
+      return;
+    }
+
+    // Validate required field exists and is valid integer
+    if (!jsonBuffer["id"].is<int>()) {
+      request->send(422, "application/json", "{\"error\":\"Missing or invalid required field: id (must be integer)\"}");
+      return;
+    }
+
+    int id = jsonBuffer["id"].as<int>();
+
+    // Validate bounds
+    if (id < 0 || id >= WIFIMANAGER_MAX_APS) {
+      request->send(422, "application/json", "{\"error\":\"ID out of valid range (0-" + String(WIFIMANAGER_MAX_APS-1) + ")\"}");
+      return;
+    }
+
+    if (apList[id].apName.isEmpty()) {
+      request->send(404, "application/json", "{\"error\":\"No WiFi network found at specified ID\"}");
+      return;
+    }
+
+    if (!delWifi((uint8_t)id)) {
+      request->send(500, "application/json", "{\"error\":\"Unable to delete network entry\"}");
+    } else {
+      request->send(200, "application/json", "{\"message\":\"WiFi network deleted successfully\"}");
+    }
   });
 
   apiWebHandlers[apiWebHandlerCount++] = &webServer->on((apiPrefix + "/apName").c_str(), HTTP_DELETE, [&](AsyncWebServerRequest * request){}, NULL,
@@ -697,6 +990,16 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
   });
 
   apiWebHandlers[apiWebHandlerCount++] = &webServer->on((apiPrefix + "/scan").c_str(), HTTP_GET, [&](AsyncWebServerRequest *request) {
+    // Rate limiting check
+    uint64_t currentTime = millis();
+    if (currentTime - lastScanRequest < SCAN_COOLDOWN_MS) {
+      uint32_t remainingTime = SCAN_COOLDOWN_MS - (currentTime - lastScanRequest);
+      request->send(429, "application/json", 
+        "{\"error\":\"Rate limit exceeded. Please wait " + String(remainingTime/1000) + " seconds before scanning again\"}");
+      return;
+    }
+    lastScanRequest = currentTime;
+
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     JsonDocument jsonDoc;
 
@@ -754,6 +1057,54 @@ void WIFIMANAGER::attachWebServer(AsyncWebServer * srv) {
     response->setCode(200);
     response->setContentLength(measureJson(jsonDoc));
     request->send(response);
+  });
+
+  apiWebHandlers[apiWebHandlerCount++] = &webServer->on((apiPrefix + "/connect").c_str(), HTTP_POST, [&](AsyncWebServerRequest * request){}, NULL,
+    [&](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
+    // Validate Content-Type
+    if (!request->hasHeader("Content-Type") || !request->getHeader("Content-Type")->value().startsWith("application/json")) {
+      request->send(400, "application/json", "{\"error\":\"Content-Type must be application/json\"}");
+      return;
+    }
+
+    if (len == 0 || len > 256) {
+      request->send(400, "application/json", "{\"error\":\"Invalid request size\"}");
+      return;
+    }
+
+    JsonDocument jsonBuffer;
+    DeserializationError error = deserializeJson(jsonBuffer, (const char*)data, len);
+
+    if (error) {
+      request->send(400, "application/json", "{\"error\":\"Invalid JSON format\"}");
+      return;
+    }
+
+    if (!jsonBuffer["id"].is<int>()) {
+      request->send(422, "application/json", "{\"error\":\"Missing or invalid field: id\"}");
+      return;
+    }
+
+    int networkId = jsonBuffer["id"].as<int>();
+    if (networkId < 0 || networkId >= WIFIMANAGER_MAX_APS) {
+      request->send(422, "application/json", "{\"error\":\"Invalid network ID\"}");
+      return;
+    }
+
+    // Get network name for logging
+    String networkName = "Unknown";
+    if (!apList[networkId].apName.isEmpty()) networkName = apList[networkId].apName;
+
+    request->send(200, "application/json", "{\"message\":\"Connecting to " + networkName + "\"}");
+    yield();
+    
+    logMessage("[WIFI][API] Starting direct specific connection attempt\n");
+    bool connectionResult = tryConnectSpecific(networkId);
+    if (connectionResult) {
+      logMessage("[WIFI][API] Direct connection successful to " + networkName + "\n");
+    } else {
+      logMessage("[WIFI][API] Direct connection to " + networkName + " failed, resuming normal WiFi management\n");
+    }
   });
 }
 
@@ -845,16 +1196,40 @@ void WIFIMANAGER::attachUI() {
 
         .network-info {
             flex-grow: 1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
-        .network-info div {
-          float: left;
-          width: 70%;
+        .network-actions {
+            display: flex;
+            gap: 8px;
+            margin-left: 8px;
         }
-
-        .network-info button {
-          float: right;
-          width: 30%;
+        .network-actions button {
+            padding: 6px 12px;
+            font-size: 0.75rem;
+            min-width: 60px;
+        }
+        
+        .btn-connect {
+            background: #16a34a;
+        }
+        .btn-connect:hover {
+            background: #15803d;
+        }
+        .btn-connect-disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        .btn-connect-disabled:hover {
+            background: #9ca3af;
+        }
+        .btn-delete {
+            background: #dc2626;
+        }
+        .btn-delete:hover {
+            background: #b91c1c;
         }
 
         .ssid {
@@ -941,6 +1316,25 @@ void WIFIMANAGER::attachUI() {
             box-sizing: border-box;
         }
 
+        .password-field {
+            position: relative;
+        }
+        .password-toggle {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #64748b;
+            cursor: pointer;
+            padding: 4px;
+            font-size: 0.875rem;
+        }
+        .password-toggle:hover {
+            color: var(--primary-color);
+        }
+
         .button-group {
             display: flex;
             gap: 8px;
@@ -969,7 +1363,7 @@ void WIFIMANAGER::attachUI() {
             <button onclick="showConnectModal()">Manual Connect</button>
         </div>
 
-        <div class="card">
+        <div class="card" id="networkListContainer" style="display: none;">
             <h2>Available Networks</h2>
             <div id="networkList" class="network-list"></div>
         </div>
@@ -988,7 +1382,10 @@ void WIFIMANAGER::attachUI() {
                 <input type="text" id="apName" required>
                 
                 <label for="apPass">Password:</label>
-                <input type="password" id="apPass" required>
+                <div class="password-field">
+                    <input type="password" id="apPass">
+                    <button type="button" class="password-toggle" onclick="togglePasswordVisibility()" id="passwordToggle">👁️</button>
+                </div>
                 
                 <div class="button-group">
                     <button type="button" class="button-secondary" onclick="closeModal()">Cancel</button>
@@ -1005,7 +1402,7 @@ void WIFIMANAGER::attachUI() {
         // Load saved networks when page loads
         window.addEventListener('load', () => {
             loadSavedNetworks();
-            scanNetworks();
+            // scanNetworks(); // prevent unneccessary disconnects
         });
 
         async function loadSavedNetworks() {
@@ -1014,13 +1411,26 @@ void WIFIMANAGER::attachUI() {
                 if (!response.ok) throw new Error('Failed to fetch saved networks');
                 
                 const savedNetworks = await response.json();
-                displaySavedNetworks(savedNetworks);
+
+                // Also get current WiFi status to check which network is connected
+                let currentSSID = '';
+                try {
+                    const statusResponse = await fetch(`${API_BASE}/wifi/status`);
+                    if (statusResponse.ok) {
+                        const status = await statusResponse.json();
+                        currentSSID = status.ssid || '';
+                    }
+                } catch (error) {
+                    console.log('Could not fetch current WiFi status:', error);
+                }
+                
+                displaySavedNetworks(savedNetworks, currentSSID);
             } catch (error) {
                 showStatus('Failed to load saved networks: ' + error.message, 'error');
             }
         }
 
-        function displaySavedNetworks(networks) {
+        function displaySavedNetworks(networks, currentSSID = '') {
             const networkList = document.getElementById('savedNetworks');
             const networkArray = Object.values(networks);
             
@@ -1029,14 +1439,27 @@ void WIFIMANAGER::attachUI() {
                 return;
             }
 
-            networkList.innerHTML = networkArray.map(network => `
-                <div class="network-item">
-                    <div class="network-info">
-                        <div class="ssid">${network.apName}</div>
-                        <button onclick="deleteNetwork('${network.id}')">delete</button>
-                    </div>
-                </div>
-            `).join('');
+            networkList.innerHTML = networkArray.map(network => {
+                const isConnected = currentSSID && currentSSID === network.apName;
+                const connectButtonClass = isConnected ? 'btn-connect-disabled' : 'btn-connect';
+                const connectButtonText = isConnected ? 'Connected' : 'Connect';
+                const connectButtonDisabled = isConnected ? 'disabled' : '';
+                
+                return `
+                    <div class="network-item">
+                        <div class="network-info">
+                            <div class="ssid">${network.apName}${isConnected ? ' ✓' : ''}</div>
+                        </div>
+                        <div class="network-actions">
+                            <button class="${connectButtonClass}" 
+                                    onclick="connectToSavedNetwork('${network.id}', '${network.apName}')" 
+                                    ${connectButtonDisabled}>
+                                ${connectButtonText}
+                            </button>
+                            <button class="btn-delete" onclick="deleteNetwork('${network.id}')">Delete</button>
+                        </div>
+                    </div>`;
+            }).join('');
         }
 
         async function scanNetworks() {
@@ -1080,6 +1503,8 @@ void WIFIMANAGER::attachUI() {
       }
 
       function displayNetworks(networks) {
+        const networkListContainer = document.getElementById('networkListContainer')
+        networkListContainer.style.display = 'block';
         const networkList = document.getElementById('networkList');
         const networkArray = Object.values(networks)
           .filter(network => network.ssid.length > 0);
@@ -1094,12 +1519,12 @@ void WIFIMANAGER::attachUI() {
 
         networkList.innerHTML = networkArray
           .map(network => `
-            <div class="network-item" onclick="showConnectModal('${network.ssid}')">
+            <div class="network-item" onclick="showConnectModal('${network.ssid}', ${network.encryptionType === 0})">
               <div class="network-info">
                 <div class="ssid">${network.ssid}</div>
                 <div class="signal">
                     Signal: ${getSignalStrength(network.rssi)}
-                    ${network.encryptionType > 0 ? '🔒' : ''}
+                    ${network.encryptionType > 0 ? '🔒' : '🔓'}
                 </div>
               </div>
             </div>
@@ -1114,15 +1539,75 @@ void WIFIMANAGER::attachUI() {
             return 'Poor';
         }
 
-        function showConnectModal(apName = '') {
+        function showConnectModal(apName = '', isOpen = false) {
             document.getElementById('apName').value = apName;
             document.getElementById('apName').readOnly = !!apName;
-            document.getElementById('apPass').value = '';
+            const passField = document.getElementById('apPass');
+            passField.value = '';
+            
+            // If it's an open network, show a hint and make password optional
+            if (isOpen && apName) {
+                passField.placeholder = 'No password required (leave empty)';
+                passField.style.backgroundColor = '#f0f9ff';
+            } else {
+                passField.placeholder = '';
+                passField.style.backgroundColor = '';
+            }
             document.getElementById('connectModal').style.display = 'flex';
         }
 
         function closeModal() {
             document.getElementById('connectModal').style.display = 'none';
+        }
+
+        async function connectToSavedNetwork(networkId, networkName) {
+            // Ignore clicks on disabled buttons
+            const button = event.target;
+            if (button.disabled || button.classList.contains('btn-connect-disabled')) {
+                return;
+            }
+            
+            try {
+                showStatus(`Connecting to ${networkName}...`, 'info');
+                
+                // Send specific network ID to connect endpoint
+                const response = await fetch(`${API_BASE}/wifi/connect`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ id: parseInt(networkId, 10) })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const result = await response.json();
+                showStatus(result.message || `Connection initiated for ${networkName}`, 'success');
+                
+                // Refresh after delay to allow reconnection
+                setTimeout(() => {
+                    loadSavedNetworks();
+                }, 5000);
+                
+            } catch (error) {
+                showStatus(`Failed to connect to ${networkName}: ` + error.message, 'error');
+            }
+        }
+        function togglePasswordVisibility() {
+            const passwordField = document.getElementById('apPass');
+            const toggleButton = document.getElementById('passwordToggle');
+            
+            if (passwordField.type === 'password') {
+                passwordField.type = 'text';
+                toggleButton.innerHTML = '🙈';
+                toggleButton.title = 'Hide password';
+            } else {
+                passwordField.type = 'password';
+                toggleButton.innerHTML = '👁️';
+                toggleButton.title = 'Show password';
+            }
         }
 
         async function deleteNetwork(deleteId) {

@@ -555,8 +555,8 @@ bool WIFIMANAGER::tryConnectSpecific(uint8_t networkId) {
 
   setMode(WIFI_STA);
   WiFi.begin(apList[networkId].apName.c_str(), apList[networkId].apPass.c_str());
-  wl_status_t status = (wl_status_t)WiFi.waitForConnectResult(5000UL);
   WiFi.setTxPower(wifiTxPower);
+  wl_status_t status = (wl_status_t)WiFi.waitForConnectResult(5000UL);
 
   auto startTime = millis();
   // wait for connection, fail, or timeout
@@ -627,6 +627,7 @@ bool WIFIMANAGER::startSoftAP(String apName, String apPass) {
 
   // setMode(WIFI_AP); // done by WiFi.softAP
   bool state = WiFi.softAP(this->softApName.c_str(), (this->softApPass.length() ? this->softApPass.c_str() : NULL));
+  WiFi.setTxPower(wifiTxPower);
   if (state) {
     dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
     dnsServer.setTTL(60);

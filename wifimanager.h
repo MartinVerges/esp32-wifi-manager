@@ -60,6 +60,8 @@ class WIFIMANAGER {
     String softApName;                  // Name of the soft AP if created, default to ESP_XXXXXXXX if empty
     String softApPass;                  // Password for the soft AP, default to no password (empty)
 
+    wifi_power_t wifiTxPower = WIFI_POWER_19_5dBm;
+
     // Wipe the apList credentials
     void clearApList();
 
@@ -119,9 +121,14 @@ class WIFIMANAGER {
 
     bool tryConnectSpecific(uint8_t networkId);
 
-
     // Check if a SSID is stored in the config
     bool configAvailable();
+
+    // Set Wifi TX Power.
+    bool setTxPower(wifi_power_t power, bool applyToRunningWifi = false);
+
+    // Get Wifi TX Power
+    wifi_power_t getTxPower(bool fromWifi);
 
     // Preconfigure the SoftAP
     void configueSoftAp(String apName = "", String apPass = "");

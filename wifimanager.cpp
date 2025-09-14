@@ -378,6 +378,31 @@ bool WIFIMANAGER::configAvailable() {
 }
 
 /**
+ * @brief Set the TX power of the Wifi
+ * @return true if memorized or correctly applied
+ * @return false if not applied correctly
+ */
+bool WIFIMANAGER::setTxPower(wifi_power_t power, bool applyToRunningWifi) {
+  wifiTxPower = power;
+  if (applyToRunningWifi) {
+    return WiFi.setTxPower(power);
+  }
+  return true;
+}
+
+/**
+ * @brief get the configured or applied TX power setting
+ * @return wifi_power_t from configuration if fromWifi is false
+ * @return wifi_power_t from running Wifi if fromWifi is true
+ */
+wifi_power_t WIFIMANAGER::getTxPower(bool fromWifi) {
+  if (fromWifi) {
+    return WiFi.getTxPower();
+  }
+  return wifiTxPower;
+}
+
+/**
  * @brief Provides the apList element id of the first configured slot
  * @details It's used to speed up connection by getting the first available configuration
  * @return uint8_t apList element id or WIFIMANAGER_MAX_APS on error
@@ -531,6 +556,7 @@ bool WIFIMANAGER::tryConnectSpecific(uint8_t networkId) {
   setMode(WIFI_STA);
   WiFi.begin(apList[networkId].apName.c_str(), apList[networkId].apPass.c_str());
   wl_status_t status = (wl_status_t)WiFi.waitForConnectResult(5000UL);
+  WiFi.setTxPower(wifiTxPower);
 
   auto startTime = millis();
   // wait for connection, fail, or timeout

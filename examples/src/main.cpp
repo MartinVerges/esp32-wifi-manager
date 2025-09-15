@@ -21,6 +21,11 @@ void setup() {
   Serial.println("\n=== ESP32 WiFi Manager Example ===");
   Serial.println("Starting WiFi Manager...");
 
+  // Optional: Set the name for your AP and optional password (leave "" for open wifi)
+  // Default: SoftAP with SSID = ESP_xxxxxx based on efuse without a password
+  // Must be called before startBackgroundTask()
+  // WifiManager.configureSoftAp("hotspot_name", "hotspot_password");
+
   WifiManager.startBackgroundTask();        // Run the background task to take care of our Wifi
   WifiManager.fallbackToSoftAp(true);       // Run a SoftAP if no known AP can be reached
   WifiManager.attachWebServer(&webServer);  // Attach our API to the HTTP Webserver 

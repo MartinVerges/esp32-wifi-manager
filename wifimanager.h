@@ -131,7 +131,7 @@ class WIFIMANAGER {
     wifi_power_t getTxPower(bool fromWifi);
 
     // Preconfigure the SoftAP
-    void configueSoftAp(String apName = "", String apPass = "");
+    void configureSoftAp(String apName = "", String apPass = "");
 
     // Start a SoftAP, called if no wifi can be connected
     bool startSoftAP(String apName = "", String apPass = "");

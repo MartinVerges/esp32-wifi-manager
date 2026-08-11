@@ -604,7 +604,7 @@ bool WIFIMANAGER::tryConnectSpecific(uint8_t networkId) {
   return false;
 }
 
-void WIFIMANAGER::configueSoftAp(String apName, String apPass) {
+void WIFIMANAGER::configureSoftAp(String apName, String apPass) {
   this->softApName = apName;
   this->softApPass = apPass;
 }
